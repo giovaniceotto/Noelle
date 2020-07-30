@@ -3,4 +3,4 @@ matplotlib
 SciencePlots
 matplotlib-label-lines
 coolprop
-rocketcea=1.0.5
+rocketcea==1.0.5
