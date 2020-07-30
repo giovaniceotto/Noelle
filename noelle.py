@@ -1,6 +1,7 @@
 # RocketCEA
 from rocketcea.cea_obj import CEA_Obj, add_new_fuel, add_new_oxidizer, add_new_propellant
 from rocketcea.biprop_utils.rho_isp_plot_obj import RhoIspPlot
+from rocketcea import blends
 # CoolProp
 from CoolProp.CoolProp import PhaseSI, PropsSI, get_global_param_string
 import CoolProp.CoolProp as CoolProp
@@ -10,7 +11,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 
-class fluid:
+class Fluid:
     def __init__(self,
                  name,
                  coolprop_name,
@@ -156,6 +157,103 @@ class fluid:
     
     def __repr__(self):
         return self.name
+
+
+class FluidMixture:
+    def __init__(self,
+                 fluid1,
+                 x1,
+                 fluid2,
+                 x2=-1):
+        """Class to hold and calculate thermodynamic properties of fluid
+        mixtures. When a new object is created, a new card is also created to
+        be used in rocketcea.
+        
+        Parameters
+        ----------
+        fluid1 : Fluid
+        x1 : float
+            Weigth percentage (0 - 100).
+        fluid2 : Fluid
+        x2 : float, optional
+            Weigth percentage (0 - 100). Defalut is 100 - x1.
+
+        Returns
+        -------
+        None
+
+        Note
+        ----
+        Both fluids should have the same storage pressure and temperature.
+        TODO: check if above restriction is really necessary.
+
+        Both fluids shoud be of the same type, either oxidizer or fuel.
+
+        Does not support fluid blends wh
+        """
+        
+        # Save input data
+        self.fluid1 = fluid1
+        self.fluid2 = fluid2
+        self.x1 = x1
+        self.x2 = x2 if x2 != -1 else (1 - x1)
+        
+        # Check if storage pressure and temperature and type is the same
+        if self.fluid1.storage_pressure != self.fluid2.storage_pressure:
+            raise ValueError(
+                'Fluid pressures do not match. ' +
+                'Fluid 1: {:.2f} K | Fluid 2: {:.2f} K'.format(
+                    self.fluid1.storage_pressure, self.fluid2.storage_pressure
+                )
+            )
+        if self.fluid1.storage_temperature != self.fluid2.storage_temperature:
+            raise ValueError(
+                'Fluid temperatures do not match. ' + 
+                'Fluid 1: {:.2f} K | Fluid 2: {:.2f} K'.format(
+                    self.fluid1.storage_temperature,
+                    self.fluid2.storage_temperature
+                )
+            )
+        if self.fluid1.fluid_type != self.fluid2.fluid_type:
+            raise ValueError(
+                'Fluid types are not the same! Must be two oxidizers or two fuels.'
+            )
+
+        # Save storage temperature, pressure and type
+        self.fluid_type = self.fluid1.fluid_type
+        self.storage_pressure = self.fluid1.storage_pressure
+        self.storage_temperature = self.fluid1.storage_temperature
+
+        # Create a new fluid name
+        self.coolprop_name = self.fluid1.coolprop_name + '&' + self.fluid2.coolprop_name
+
+        # Create a new rocketcea fluid blend
+        if self.fluid_type == 'fuel':
+            self.name = blends.newFuelBlend(
+                fuelL=[self.fluid1.name, self.fluid2.name], 
+                fuelPcentL=[self.x1, self.x2]
+            )
+        else:
+            self.name = blends.newOxBlend(
+                fuelL=[self.fluid1.name, self.fluid2.name], 
+                fuelPcentL=[self.x1, self.x2]
+            )
+
+
+        # Create HEOS CoolProp object
+        self.HEOS = CoolProp.AbstractState('HEOS', self.coolprop_name)
+        self.HEOS.set_mass_fractions([self.x1/100, self.x2/100])
+        self.HEOS.update(
+            CoolProp.PT_INPUTS,
+            self.storage_pressure,
+            self.storage_temperature
+        )
+
+        self.storage_density = self.HEOS.rhomass()
+    
+    def __repr__(self):
+        return self.name
+
 
 class Motor:
     def __init__ (self,
@@ -354,7 +452,6 @@ class Motor:
         
         return None
     
-
     def report (self):
         print("Thrust (N): {:.2f}".format(self.thrust))
         print()
