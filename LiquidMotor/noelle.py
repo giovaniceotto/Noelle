@@ -1,6 +1,5 @@
 # RocketCEA
 from rocketcea.cea_obj import CEA_Obj, add_new_fuel, add_new_oxidizer, add_new_propellant
-from rocketcea.biprop_utils.rho_isp_plot_obj import RhoIspPlot
 from rocketcea import blends
 # CoolProp
 from CoolProp.CoolProp import PhaseSI, PropsSI, get_global_param_string
