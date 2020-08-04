@@ -1,6 +1,7 @@
 numpy
 matplotlib
+scipy
 SciencePlots
 matplotlib-label-lines
 coolprop
-rocketcea==1.0.5
+rocketcea
