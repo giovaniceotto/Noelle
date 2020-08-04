@@ -1,25 +1,72 @@
+""" This code computes some key design parameters of a liquid rocket engine,
+    namely:
+
+    TODO: Update description
+    - Oxidiser mass flow rate (kg/s)
+    - Fuel mass flow rate (kg/s)
+    - Oxidiser total mass (kg)
+    - Fuel total mass (kg)
+    - Nozzle throat and exit areas (m2)
+    - Number injector orifices
+    - Volume of combustion chamber (m3)
+
+    Provided that the following inputs are given:
+
+    - Nominal Thrust (N)
+    - Burn time (s)
+    - Combustion chamber pressure (Pascal)
+    - Oxidiser tank pressure (Pascal)
+    - Fuel tank pressure (Pascal)
+    - Heat capacity ratio of combustion products
+    - Molar weight of combustion products (kg/kmol)
+    - Adiabatic flame temperature (K)
+    - Oxidiser-fuel mass ratio
+    - Discharge coefficient of injector's orifices
+    - Diameter of injector's orifices (m)
+    - Combustion efficiency
+    - Nozzle expansion efficiency
+
+    Assumptions:
+
+    - Isentropic flow along the nozzle
+    - Temperature inside the combustion chamber equals the adiabatic flame
+    temperature
+    - Combustion chamber is adiabatic
+    - Combustion products form a mixture which behaves like an ideal gas
+"""
+
 # RocketCEA
-from rocketcea.cea_obj import CEA_Obj, add_new_fuel, add_new_oxidizer, add_new_propellant
+from rocketcea.cea_obj_w_units import CEA_Obj
+from rocketcea.cea_obj import add_new_fuel, add_new_oxidizer, add_new_propellant
 from rocketcea import blends
+
 # CoolProp
 from CoolProp.CoolProp import PhaseSI, PropsSI, get_global_param_string
 import CoolProp.CoolProp as CoolProp
+
 # Numpy
 import numpy as np
+
+# Scipy
+from scipy.optimize import minimize
+
 # Matplotlib
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 
+
 class Fluid:
-    def __init__(self,
-                 name,
-                 coolprop_name,
-                 formula,
-                 fluid_type, 
-                 storage_pressure=None, 
-                 storage_temperature=None,
-                 storage_density=None,
-                 storage_enthalpy=None):
+    def __init__(
+        self,
+        name,
+        coolprop_name,
+        formula,
+        fluid_type,
+        storage_pressure=None,
+        storage_temperature=None,
+        storage_density=None,
+        storage_enthalpy=None,
+    ):
         """Class to hold and calculate thermodynamic properties of
         oxidizers and fuels. When a new object is created, a new
         card is also created to be used in rocketcea.
@@ -50,14 +97,14 @@ class Fluid:
             be calculated based on pressure and temperature given. If the
             fluid is in phase change regime, liquid density will be considered.
         storage_enthalpy: float, optional
-            Storage enthalpy in J/kg. If not given, it will be calculated using coolprop
-            based on pressure and temperature given, considering liquid properties
-            if state is phase change. Coolprop and NASA CEA use different enthalpy
-            references. Therefore, this entalhpy will not be used in the input card
-            for rocketcea. Thermo.lib will be used to calculate the entalphy based on
-            the fluid formula.
+            Storage enthalpy in J/kg. If not given, it will be calculated using
+            coolprop based on pressure and temperature given, considering
+            liquid properties if state is phase change. Coolprop and NASA CEA
+            use different enthalpy references. Therefore, this entalhpy will
+            not be used in the input card for rocketcea. Thermo.lib will be
+            used to calculate the entalphy based on the fluid formula.
         """
-        
+
         # Save input data
         self.name = name
         self.coolprop_name = coolprop_name
@@ -68,76 +115,69 @@ class Fluid:
         self.storage_density = storage_density
         self.storage_enthalpy = storage_enthalpy
         self.quality = None
-        
+
         # Calculate relevant thermodynamic properties
         if self.storage_pressure is None:
-            self.quality = 0 # Consider only liquid phase
-            self.calc_pressure()        
+            self.quality = 0  # Consider only liquid phase
+            self.calc_pressure()
         elif self.storage_temperature is None:
-            self.quality = 0 # Consider only liquid phase
+            self.quality = 0  # Consider only liquid phase
             self.calc_temperature()
-        
         if self.storage_density is None:
             self.calc_density()
-        
         if self.storage_enthalpy is None:
             self.calc_enthalpy()
-        
         # Create CEA card
         self.card = ""
         if self.formula != None:
             self.cea_card()
-    
+
     def calc_pressure(self):
         # Calculate pressure based on saturation curve
-        P = PropsSI("P",
-                    "Q", 0,
-                    "T", self.storage_temperature,
-                    self.coolprop_name)
+        P = PropsSI("P", "Q", 0, "T", self.storage_temperature, self.coolprop_name)
         self.storage_pressure = P
         return P
-    
+
     def calc_temperature(self):
         # Calculate temperature based on saturation curve
-        T = PropsSI("T",
-                    "Q", 0,
-                    "P", self.storage_pressure,
-                    self.coolprop_name)
+        T = PropsSI("T", "Q", 0, "P", self.storage_pressure, self.coolprop_name)
         self.storage_temperature = T
         return T
-    
+
     def calc_density(self):
         # Calculate density using CoolProp
         if self.quality == 0:
-            D = PropsSI("D",
-                        "Q", 0,
-                        "P", self.storage_pressure,
-                        self.coolprop_name)
+            D = PropsSI("D", "Q", 0, "P", self.storage_pressure, self.coolprop_name)
         else:
-            D = PropsSI("D",
-                        "T", self.storage_temperature,
-                        "P", self.storage_pressure,
-                        self.coolprop_name)
+            D = PropsSI(
+                "D",
+                "T",
+                self.storage_temperature,
+                "P",
+                self.storage_pressure,
+                self.coolprop_name,
+            )
         # Save result
         self.storage_density = D
         return D
-    
+
     def calc_enthalpy(self):
         # Calculate density using CoolProp
         if self.quality == 0:
-            H = PropsSI("H",
-                        "Q", 0,
-                        "P", self.storage_pressure,
-                        self.coolprop_name)
-        else:            
-            H = PropsSI("H",
-                        "T", self.storage_temperature,
-                        "P", self.storage_pressure,
-                        self.coolprop_name)
+            H = PropsSI("H", "Q", 0, "P", self.storage_pressure, self.coolprop_name)
+        else:
+            H = PropsSI(
+                "H",
+                "T",
+                self.storage_temperature,
+                "P",
+                self.storage_pressure,
+                self.coolprop_name,
+            )
         # Save result
         self.storage_enthalpy = H
         return H
-    
+
     def cea_card(self):
         # Create cea card and rocketcea fuel/oxidizer
         self.card += self.name + " "
@@ -145,25 +185,23 @@ class Fluid:
         self.card += "wt%=100" + " "
         # self.card += "h,cal={:.3f}".format(self.storage_enthalpy/4.184) + " "
         self.card += "t(k)={:.3f}".format(self.storage_temperature) + " "
-        self.card += "rho={:.3f}".format(self.storage_density/1000) + " " # convert density to g/cc
+        self.card += (
+            "rho={:.3f}".format(self.storage_density / 1000) + " "
+        )  # convert density to g/cc
         if self.fluid_type == "oxidizer":
             self.card = "oxid " + self.card
             add_new_oxidizer(self.name, self.card)
         elif self.fluid_type == "fuel":
             self.card = "fuel " + self.card
             add_new_fuel(self.name, self.card)
-        return self.card 
-    
+        return self.card
+
     def __repr__(self):
         return self.name
 
 
 class FluidMixture:
-    def __init__(self,
-                 fluid1,
-                 x1,
-                 fluid2,
-                 x2=-1):
+    def __init__(self, fluid1, x1, fluid2, x2=-1):
         """Class to hold and calculate thermodynamic properties of fluid
         mixtures. When a new object is created, a new card is also created to
         be used in rocketcea.
@@ -190,129 +228,90 @@ class FluidMixture:
 
         Does not support fluid blends wh
         """
-        
+
         # Save input data
         self.fluid1 = fluid1
         self.fluid2 = fluid2
         self.x1 = x1
         self.x2 = x2 if x2 != -1 else (1 - x1)
-        
+
         # Check if storage pressure and temperature and type is the same
         if self.fluid1.storage_pressure != self.fluid2.storage_pressure:
             raise ValueError(
-                'Fluid pressures do not match. ' +
-                'Fluid 1: {:.2f} K | Fluid 2: {:.2f} K'.format(
+                "Fluid pressures do not match. "
+                + "Fluid 1: {:.2f} K | Fluid 2: {:.2f} K".format(
                     self.fluid1.storage_pressure, self.fluid2.storage_pressure
                 )
             )
         if self.fluid1.storage_temperature != self.fluid2.storage_temperature:
             raise ValueError(
-                'Fluid temperatures do not match. ' + 
-                'Fluid 1: {:.2f} K | Fluid 2: {:.2f} K'.format(
-                    self.fluid1.storage_temperature,
-                    self.fluid2.storage_temperature
+                "Fluid temperatures do not match. "
+                + "Fluid 1: {:.2f} K | Fluid 2: {:.2f} K".format(
+                    self.fluid1.storage_temperature, self.fluid2.storage_temperature
                 )
             )
         if self.fluid1.fluid_type != self.fluid2.fluid_type:
             raise ValueError(
-                'Fluid types are not the same! Must be two oxidizers or two fuels.'
+                "Fluid types are not the same! Must be two oxidizers or two fuels."
             )
-
         # Save storage temperature, pressure and type
         self.fluid_type = self.fluid1.fluid_type
         self.storage_pressure = self.fluid1.storage_pressure
         self.storage_temperature = self.fluid1.storage_temperature
 
         # Create a new fluid name
-        self.coolprop_name = self.fluid1.coolprop_name + '&' + self.fluid2.coolprop_name
+        self.coolprop_name = self.fluid1.coolprop_name + "&" + self.fluid2.coolprop_name
 
         # Create a new rocketcea fluid blend
-        if self.fluid_type == 'fuel':
+        if self.fluid_type == "fuel":
             self.name = blends.newFuelBlend(
-                fuelL=[self.fluid1.name, self.fluid2.name], 
-                fuelPcentL=[self.x1, self.x2]
+                fuelL=[self.fluid1.name, self.fluid2.name],
+                fuelPcentL=[self.x1, self.x2],
             )
         else:
             self.name = blends.newOxBlend(
-                fuelL=[self.fluid1.name, self.fluid2.name], 
-                fuelPcentL=[self.x1, self.x2]
+                fuelL=[self.fluid1.name, self.fluid2.name],
+                fuelPcentL=[self.x1, self.x2],
             )
-
-
         # Create HEOS CoolProp object
-        self.HEOS = CoolProp.AbstractState('HEOS', self.coolprop_name)
-        self.HEOS.set_mass_fractions([self.x1/100, self.x2/100])
+        self.HEOS = CoolProp.AbstractState("HEOS", self.coolprop_name)
+        self.HEOS.set_mass_fractions([self.x1 / 100, self.x2 / 100])
         self.HEOS.update(
-            CoolProp.PT_INPUTS,
-            self.storage_pressure,
-            self.storage_temperature
+            CoolProp.PT_INPUTS, self.storage_pressure, self.storage_temperature
         )
 
         self.storage_density = self.HEOS.rhomass()
-    
+
     def __repr__(self):
         return self.name
 
 
 class Motor:
-    def __init__ (self,
-                    oxidizer,
-                    fuel,
-                    thrust = 1000,
-                    burn_time = 10,
-                    p_chamber = 35,
-                    n_cstar = 0.885,
-                    n_cf = 0.95,
-                    cd_ox = 0.4,
-                    cd_fuel = 0.4,
-                    suboptimal=1):
-        
+    def __init__(
+        self,
+        oxidizer,
+        fuel,
+        thrust=1000,
+        burn_time=10,
+        p_chamber=35,
+        n_cstar=0.885,
+        n_cf=0.95,
+        cd_ox=0.4,
+        cd_fuel=0.4,
+        phi=None,
+    ):
+
         """
         Motor preliminary design class.
-        This code computes some key design parameters of a LOX-CH4 liquid rocket engine, namely:
-
-        - Oxidiser mass flow rate (kg/s)
-        - Fuel mass flow rate (kg/s)
-        - Oxidiser total mass (kg)
-        - Fuel total mass (kg)
-        - Nozzle throat and exit areas (m2)
-        - Number injector orifices
-        - Volume of combustion chamber (m3)
-
-        Provided that the following inputs are given:
-
-        - Nominal Thrust (N)
-        - Burn time (s)
-        - Combustion chamber pressure (Pascal)
-        - Oxidiser tank pressure (Pascal)
-        - Fuel tank pressure (Pascal)
-        - Heat capacity ratio of combustion products
-        - Molar weight of combustion products (kg/kmol)
-        - Adiabatic flame temperature (K)
-        - Oxidiser-fuel mass ratio
-        - Discharge coefficient of injector's orifices
-        - Diameter of injector's orifices (m)
-        - Combustion efficiency
-        - Nozzle expansion efficiency
-
-        Assumptions:
-
-        - Isentropic flow along the nozzle
-
-        - Temperature inside the combustion chamber equals the adiabatic flame temperature
-
-        - Combustion chamber is adiabatic
-
-        - Combustion products form a mixture which behaves like an ideal gas
         
         Parameters
         ----------
-        oxidizer: Fluid object
+        oxidizer: Fluid or FluidMixture object
             Object from Fluid class with oxidizer properties.
-            Example: LOX_PC = fluid(name='O2(L)', coolprop_name='oxygen', 
+            Example: LOX_PC = Fluid(name='O2(L)', coolprop_name='oxygen', 
                                     formula='O 2', fluid_type='oxidizer',
                                     storage_temperature=90)
-        fuel: Fluid object
+        fuel: Fluid or FluidMixture object
             Object from Fluid class with fuel properties.
             Example: LCH4_PC = fluid(name='CH4(L)', coolprop_name='methane',
                                         formula='C 1 H 4', fluid_type='fuel',
@@ -331,132 +330,278 @@ class Motor:
             Discharge coefficient on oxidiser injector. (No units)
         cd_fuel: float
             Discharge coefficient on fuel injector. (No units)
-        
-        Calculated Parameters
-        ---------------------
-        self.To: float
-            Adiabatic flame temperature (K).
-        self.OFratio: float
-            Oxidiser to fuel mass ratio for optimal Isp.
-        self.k: float
-            Ratio of specific heats of exhaust products in case 
-            of optimal Isp.
-        self.Mol_Weight: float
-            Molecular weight of exhaust products (kg/kmol) in case
-            of optimal Isp.            
+        phi: float, optional
+            Equivalence ratio. If None, which is default, this will be
+            calculated to optimize specific impulse.
+            phi = (fuel-to-oxidizer ratio) / (fuel-to-oxidizer ratio)st.
         """
-        
-
-        #---------------Inputs----------------#
+        # -------------------------------Inputs--------------------------------#
         # Environment
-        self.g = 9.81    # Gravitational Acceleration, m/s^2
-        self.Pa = 101325 # Ambient Pressure, Pascal
-        self.Ta = 300    # Ambient Temperature, Kelvin
+        self.g = 9.81  # Gravitational Acceleration, m/s^2
+        self.Pa = 1  # Ambient Pressure, bar
+        self.Ta = 300  # Ambient Temperature, Kelvin
 
         # Oxidizer and fuel
         self.oxidizer = oxidizer
-        self.rho_ox = oxidizer.storage_density # Oxidizer density, kg/m3
+        self.rho_ox = oxidizer.storage_density  # Oxidizer density, kg/m3
         self.fuel = fuel
-        self.rho_fuel = fuel.storage_density   # Fuel density, kg/m3
-        
+        self.rho_fuel = fuel.storage_density  # Fuel density, kg/m3
+
         # Performance
-        self.thrust = thrust        # Nominal Thrust, N
+        self.thrust = thrust  # Nominal Thrust, N
         self.burn_time = burn_time  # Burn time, seconds
 
         # Injectors
-        self.cd_ox = cd_ox          # Discharge coefficient for LOX injector
-        self.cd_fuel = cd_fuel      # Discharge coefficient for CH4 injector
+        self.cd_ox = cd_ox  # Discharge coefficient for LOX injector
+        self.cd_fuel = cd_fuel  # Discharge coefficient for CH4 injector
 
         # Combustion chamber
-        self.p_chamber = p_chamber*10**5             # Pressure on combustion chamber, Pascal
-        self.p_chamber_psi = 14.5038*p_chamber  # Pressure on combustion chamber, Pascal
-        self.n_cstar = n_cstar                       # Combustion Efficiency
-        self.n_cf = n_cf                             # Thrust Coefficient Efficiency
+        self.p_chamber = p_chamber  # Pressure on combustion chamber, bar
+        self.n_cstar = n_cstar  # Combustion Efficiency
+        self.n_cf = n_cf  # Thrust Coefficient Efficiency
+
+        #-------------------Computed Combustion Parameters--------------------#
+        if phi is None:
+            OF_ratio, gamma, molecular_weight, flame_temperature = self.optimize_combustion_parameters_at_chamber()
+        else:
+            OF_ratio, gamma, molecular_weight, flame_temperature = self.calculate_combustion_parameters_at_chamber(phi)
         
-        #---------------Calculated Inputs----------------#
+        self.OF_ratio = OF_ratio
+        self.k = gamma
+        self.M = molecular_weight
+        self.To = flame_temperature
+
+        #---------------------Computed Output Parameters----------------------#
+        self.calculate_output_parameters()
+
+        return None
+
+    def calculate_combustion_parameters_at_chamber(self, phi):
+        """ Uses RocketCEA, which wraps NASA CEA, to calculate 4 parameters at
+        the combustion chamber:
+
+            OF_ratio : Oxidizer/fuel mass ratio.
+            k : exhaust gasses cp/cv = gamma.
+            M : exhaust gasses moleculaer weight.
+            To : adiabatic flame temperature.
+
+        Parameters
+        ----------
+        phi : float
+            Equivalence ratio: phi = (fuel-to-oxidizer ratio) /
+            (fuel-to-oxidizer ratio)st.
+
+        Returns
+        -------
+        OF_ratio : float
+            Oxidizer/fuel mass ratio based on given phi.
+        gamma : float
+            Exhaust gasses cp/cv.
+        molecular_weight : float
+            Exhaust gasses moleculaer weight.
+        flame_temperature : float
+            Adiabatic flame temperature.
+        """
+        cea_analysis = CEA_Obj(
+            oxName=self.oxidizer.name,
+            fuelName=self.fuel.name,
+            isp_units="sec",
+            cstar_units="m/sec",
+            pressure_units="bar",
+            temperature_units="K",
+            sonic_velocity_units="m/sec",
+            enthalpy_units="kJ/kg",
+            density_units="kg/m^3",
+            specific_heat_units="kJ/kg-K",
+            viscosity_units="millipoise",
+            thermal_cond_units="W/cm-degC",
+        )
+
+        # Get OF ratio based on equivalence ratio
+        OF_ratio = cea_analysis.getMRforER(ERphi=phi)
+
+        # Calculate outputs
+        area_ratio = cea_analysis.get_eps_at_PcOvPe(
+            Pc=self.p_chamber, MR=OF_ratio, PcOvPe=self.p_chamber / self.Pa
+        )
+        (
+            Isp,
+            cstar,
+            flame_temperature,
+            molecular_weight,
+            gamma,
+        ) = cea_analysis.get_IvacCstrTc_ChmMwGam(
+            Pc=self.p_chamber, MR=OF_ratio, eps=area_ratio
+        )
+
+        return OF_ratio, gamma, molecular_weight, flame_temperature
+
+    def optimize_combustion_parameters_at_chamber(self):
+        """ Uses RocketCEA, which wraps NASA CEA, to calculate 4 parameters at
+        the combustion chamber:
+
+            OF_ratio : Oxidizer/fuel mass ratio.
+            k : exhaust gasses cp/cv = gamma.
+            M : exhaust gasses moleculaer weight.
+            To : adiabatic flame temperature.
+
+        OF_ratio is calculated by optimizing the specific impulse of the motor.
+
+        Returns
+        -------
+        optimal_OF_ratio : float
+            Optimized oxidizer/fuel mass ratio generating optimum specific
+            impulse.
+        gamma : float
+            Exhaust gasses cp/cv.
+        molecular_weight : float
+            Exhaust gasses moleculaer weight.
+        flame_temperature : float
+            Adiabatic flame temperature.
+        """
+        # ---------------Calculated Inputs----------------#
         # Calculate input parameters from oxidiser and fuel combustion
         # Initialize CEA analysis
-        cea_analysis = CEA_Obj(oxName=self.oxidizer.name, fuelName=self.fuel.name)
-        
-        # print(cea_analysis.get_full_cea_output(Pc=self.p_chamber_psi, MR=2))
-        
-        # Initialize Isp optimization sequence
-        min_OFratio = 0.1     # Minimum Oxidizer to Fuel ratio to test
-        max_OFratio = 10      # Maximum Oxidizer to Fuel ratio to test
-        samples_OFratio = 100 # Number of Oxider to Fuel ratios to test
-        
-        # Initialize optimum values
-        optimum_Isp = 0
-        optimum_OFratio = 0
-        optimum_To = 0
-        optimum_M = 0
-        optimum_k = 0
+        cea_analysis = CEA_Obj(
+            oxName=self.oxidizer.name,
+            fuelName=self.fuel.name,
+            # Units
+            isp_units="sec",
+            cstar_units="m/sec",
+            pressure_units="bar",
+            temperature_units="K",
+            sonic_velocity_units="m/sec",
+            enthalpy_units="kJ/kg",
+            density_units="kg/m^3",
+            specific_heat_units="kJ/kg-K",
+            viscosity_units="millipoise",
+            thermal_cond_units="W/cm-degC",
+        )
 
-        for test_OFratio in np.linspace(min_OFratio, max_OFratio, samples_OFratio):
-            # Get combustion results from cea analysis for given test_OFratio
-            eps = cea_analysis.get_eps_at_PcOvPe(Pc=self.p_chamber_psi, MR=test_OFratio,PcOvPe=self.p_chamber/self.Pa)
-            Isp, cstar, To, M, k = cea_analysis.get_IvacCstrTc_ChmMwGam(Pc=self.p_chamber_psi, MR=test_OFratio, eps=eps)
-            # Check if Isp for this test_OFratio is maximum relative to previous
-            if Isp > optimum_Isp:
-                # Isp is biggest yet -> record data
-                optimum_Isp = Isp
-                optimum_OFratio = test_OFratio
-                optimum_To = To
-                optimum_M = M
-                optimum_k = k
-        
-        # Optimization sequence done, store results
-        self.To = optimum_To*5/9
-        self.OFratio = optimum_OFratio
-        self.k = optimum_k
-        self.M = optimum_M
-        
-        # Suboptimal conditions
-        if suboptimal != 1:
-            self.OFratio *= suboptimal
-            eps = cea_analysis.get_eps_at_PcOvPe(Pc=self.p_chamber_psi, MR=self.OFratio,PcOvPe=self.p_chamber/self.Pa)
-            Isp, cstar, To, M, k = cea_analysis.get_IvacCstrTc_ChmMwGam(Pc=self.p_chamber_psi, MR=self.OFratio, eps=eps)
-            self.To = To*5/9
-            self.k = k
-            self.M = M
+        # Get stoichiometric equivalence ratio
+        stoichiometric_OF_ratio = cea_analysis.getMRforER(ERphi=1.0)
 
-        #---------------Computed Output Parameters----------------#
-        self.propellant_storage_density = (self.OFratio + 1)/(self.OFratio/self.oxidizer.storage_density + 1/self.fuel.storage_density)
-        
-        self.cstar = (8314*self.To*self.k/self.M)**0.5/self.k/((2/(self.k+1))**((self.k+1)/(self.k-1)))**0.5 # Characteristic velocity, m/s
+        # Find optimal specific impulse
+        def minus_specific_impulse_function(OF_ratio):
+            area_ratio = cea_analysis.get_eps_at_PcOvPe(
+                Pc=self.p_chamber, MR=OF_ratio, PcOvPe=self.p_chamber / self.Pa
+            )
+            Isp, cstar, To, M, k = cea_analysis.get_IvacCstrTc_ChmMwGam(
+                Pc=self.p_chamber, MR=OF_ratio, eps=area_ratio
+            )
+            return -Isp
 
-        self.cf = (((2*self.k**2)/(self.k-1))*(2/(self.k+1))**((self.k+1)/(self.k-1))*(1-(self.Pa/self.p_chamber)**((self.k-1)/self.k)))**0.5 # Thrust coefficient
+        res = minimize(
+            fun=minus_specific_impulse_function,
+            x0=stoichiometric_OF_ratio,
+            method="Powell",
+            bounds=[[stoichiometric_OF_ratio * 0.5, stoichiometric_OF_ratio * 2]],
+        )
 
-        self.Isp = self.cstar*self.n_cstar*self.cf*self.n_cf/self.g # Specific impulse, seconds
+        # Optimization sequence complete, store results
+        optimal_OF_ratio = res.x[0]
+        optimal_area_ratio = cea_analysis.get_eps_at_PcOvPe(
+            Pc=self.p_chamber, MR=optimal_OF_ratio, PcOvPe=self.p_chamber / self.Pa
+        )
+        (
+            optimal_Isp,
+            cstar,
+            flame_temperature,
+            molecular_weight,
+            gamma,
+        ) = cea_analysis.get_IvacCstrTc_ChmMwGam(
+            Pc=self.p_chamber, MR=optimal_OF_ratio, eps=optimal_area_ratio
+        )
 
-        self.Iv = self.Isp*self.g*self.propellant_storage_density
-        
-        self.total_mass_flow = self.thrust/(self.Isp*self.g) # Total mass flow rate, kg/s
+        return optimal_OF_ratio, gamma, molecular_weight, flame_temperature
 
-        self.ox_mass_flow = (self.OFratio/(self.OFratio+1))*self.total_mass_flow # Oxidiser mass flow rate, kg/s
+    def calculate_output_parameters(self):
+        """Calculate output parameters such as:
+            propellant_storage_density
+            cstar
+            cf
+            Isp
+            Iv
+            total_mass_flow
+            ox_mass_flow
+            fuel_mass_flow
+            ox_mass_total
+            fuel_mass_total
+            throat_area
+            throat_diameter
+            exit_area
+            exit_diameter
+        """
+        self.propellant_storage_density = (self.OF_ratio + 1) / (
+            self.OF_ratio / self.oxidizer.storage_density
+            + 1 / self.fuel.storage_density
+        )
 
-        self.fuel_mass_flow = (1/(self.OFratio+1))*self.total_mass_flow # Fuel mass flow rate, kg/s
+        # Characteristic velocity, m/s
+        self.cstar = (
+            (8314 * self.To * self.k / self.M) ** 0.5
+            / self.k
+            / (((2 / (self.k + 1)) ** ((self.k + 1) / (self.k - 1))) ** 0.5)
+        )
 
-        self.ox_mass_total = self.ox_mass_flow*self.burn_time # Total oxidiser mass, kg
+        # Thrust coefficient
+        self.cf = (
+            ((2 * self.k ** 2) / (self.k - 1))
+            * (2 / (self.k + 1)) ** ((self.k + 1) / (self.k - 1))
+            * (1 - (self.Pa / self.p_chamber) ** ((self.k - 1) / self.k))
+        ) ** 0.5
 
-        self.fuel_mass_total = self.fuel_mass_flow*self.burn_time # Total fuel mass, kg
+        # Specific impulse, seconds
+        self.Isp = self.cstar * self.n_cstar * self.cf * self.n_cf / self.g
 
-        self.throat_area = self.thrust/(self.p_chamber*self.cf*self.n_cf) # Throat area, m2
+        # Volumetric specific impulse, kg/(s*m^2)
+        self.Iv = self.Isp * self.g * self.propellant_storage_density
 
-        self.throat_diameter = (4*self.throat_area/np.pi)**0.5 # Throat diameter, m
+        # Total mass flow rate, kg/s
+        self.total_mass_flow = self.thrust / (self.Isp * self.g)
 
-        self.exit_area = self.throat_area/( ((self.k+1)/2)**(1/(self.k-1)) * (self.Pa/self.p_chamber)**(1/self.k) * ( ((self.k+1)/(self.k-1))*(1-(self.Pa/self.p_chamber)**((self.k-1)/self.k) ) )**0.5 ) # Exit area, m2
+        # Oxidiser mass flow rate, kg/s
+        self.ox_mass_flow = (self.OF_ratio / (self.OF_ratio + 1)) * self.total_mass_flow
 
-        self.exit_diameter = (4*self.exit_area/np.pi)**0.5 # Exit diameter, m
-        
+        # Fuel mass flow rate, kg/s
+        self.fuel_mass_flow = (1 / (self.OF_ratio + 1)) * self.total_mass_flow
+
+        # Total oxidiser mass, kg
+        self.ox_mass_total = self.ox_mass_flow * self.burn_time
+
+        # Total fuel mass, kg
+        self.fuel_mass_total = self.fuel_mass_flow * self.burn_time
+
+        # Throat area, m2
+        self.throat_area = self.thrust / (
+            self.p_chamber * 10 ** 5 * self.cf * self.n_cf
+        )
+
+        # Throat diameter, m
+        self.throat_diameter = (4 * self.throat_area / np.pi) ** 0.5
+
+        # Exit area, m2
+        self.exit_area = self.throat_area / (
+            ((self.k + 1) / 2) ** (1 / (self.k - 1))
+            * (self.Pa / self.p_chamber) ** (1 / self.k)
+            * (
+                ((self.k + 1) / (self.k - 1))
+                * (1 - (self.Pa / self.p_chamber) ** ((self.k - 1) / self.k))
+            )
+            ** 0.5
+        )
+
+        # Exit diameter, m
+        self.exit_diameter = (4 * self.exit_area / np.pi) ** 0.5
+
         return None
-    
-    def report (self):
+
+    def report(self):
         print("Thrust (N): {:.2f}".format(self.thrust))
         print()
         print("Burn time (seconds): {:.2f}".format(self.burn_time))
         print()
-        print("Chamber pressure (bar): {:.1f}".format(self.p_chamber/10**5))
+        print("Chamber pressure (bar): {:.1f}".format(self.p_chamber))
         print()
         print("Adiabatic chamber temperature (Kelvin): {:.1f}".format(self.To))
         print()
@@ -464,19 +609,33 @@ class Motor:
         print()
         print("Ratio of specific heats of exhaust products: {:.2f}".format(self.k))
         print()
-        print("Oxidiser/fuel mass ratio: {:.2f}".format(self.OFratio))
+        print("Oxidiser/fuel mass ratio: {:.2f}".format(self.OF_ratio))
         print()
         print("Combustion efficiency (%): {:.2f}".format(self.n_cstar))
         print()
         print("Thrust coefficient efficiency (%): {:.2f}".format(self.n_cf))
         print()
-        print("Pressure on oxidiser tank (bar): {:.2f}".format(self.oxidizer.storage_pressure/10**5))
+        print(
+            "Pressure on oxidiser tank (bar): {:.2f}".format(
+                self.oxidizer.storage_pressure / 10 ** 5
+            )
+        )
         print()
-        print("Temperature on oxidiser tank (K): {:.2f}".format(self.oxidizer.storage_temperature))
+        print(
+            "Temperature on oxidiser tank (K): {:.2f}".format(
+                self.oxidizer.storage_temperature
+            )
+        )
         print()
-        print("Pressure on fuel tank (bar): {:.2f}".format(self.fuel.storage_pressure/10**5))
+        print(
+            "Pressure on fuel tank (bar): {:.2f}".format(
+                self.fuel.storage_pressure / 10 ** 5
+            )
+        )
         print()
-        print("Temperature on fuel tank (K): {:.2f}".format(self.fuel.storage_temperature))
+        print(
+            "Temperature on fuel tank (K): {:.2f}".format(self.fuel.storage_temperature)
+        )
         print()
         print("Characteristic velocity (m/s): {:.2f}".format(self.cstar))
         print()
@@ -496,7 +655,89 @@ class Motor:
         print()
         print("Total fuel mass (kg): {:.3f}".format(self.fuel_mass_total))
         print()
-        print("Nozzle throat diameter (mm): {:.1f}".format(self.throat_diameter*10**3))
+        print(
+            "Nozzle throat diameter (mm): {:.1f}".format(self.throat_diameter * 10 ** 3)
+        )
         print()
-        print("Nozzle exit diameter (mm): {:.1f}".format(self.exit_diameter*10**3))
+        print("Nozzle exit diameter (mm): {:.1f}".format(self.exit_diameter * 10 ** 3))
         print()
+
+    def print_cea_output(self):
+        """Prints NASA CEA output file."""
+        cea_analysis = CEA_Obj(
+            oxName=self.oxidizer.name,
+            fuelName=self.fuel.name,
+            isp_units="sec",
+            cstar_units="m/sec",
+            pressure_units="bar",
+            temperature_units="K",
+            sonic_velocity_units="m/sec",
+            enthalpy_units="kJ/kg",
+            density_units="kg/m^3",
+            specific_heat_units="kJ/kg-K",
+            viscosity_units="millipoise",
+            thermal_cond_units="W/cm-degC",
+        )
+
+        area_ratio = cea_analysis.get_eps_at_PcOvPe(
+            Pc=self.p_chamber, MR=self.OF_ratio, PcOvPe=self.p_chamber / self.Pa
+        )
+
+        cea_output = cea_analysis.cea_obj.get_full_cea_output(
+            Pc=self.p_chamber,
+            MR=self.OF_ratio,
+            PcOvPe=self.p_chamber / self.Pa,
+            eps=area_ratio,
+            show_transport=1,
+            pc_units="bar",
+            output="siunits",
+            show_mass_frac=True,
+        )
+        print(cea_output)
+
+
+# Good for debugging in VSCode
+if __name__ == "__main__":
+    # Oxidizer
+    NOX = Fluid(
+        name="N2O",
+        coolprop_name="NitrousOxide",
+        formula=None,
+        fluid_type="oxidizer",
+        storage_temperature=298.15,
+    )
+
+    # Fuels
+    H2O = Fluid(
+        name="H2O(L)",
+        coolprop_name="water",
+        formula="H 2 O 1",
+        fluid_type="fuel",
+        storage_pressure=35e5,
+        storage_temperature=298.15,
+    )
+
+    LC2H5OH = Fluid(
+        name="C2H5OH(L)",
+        coolprop_name="ethanol",
+        formula="C 2 H 6 O 1",
+        fluid_type="fuel",
+        storage_pressure=35e5,
+        storage_temperature=298.15,
+    )
+
+    H2O_30_C2H50H_70 = FluidMixture(fluid1=LC2H5OH, x1=70, fluid2=H2O, x2=30)
+
+    NOELLE = Motor(
+        NOX,
+        LC2H5OH,
+        thrust=1500,
+        burn_time=10,
+        p_chamber=35,
+        n_cstar=1,
+        n_cf=1,
+        cd_ox=0.6,
+        cd_fuel=0.182,
+        suboptimal=1,
+    )
+    NOELLE.report()
