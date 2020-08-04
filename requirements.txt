@@ -5,3 +5,4 @@ SciencePlots
 matplotlib-label-lines
 coolprop
 rocketcea
+PTable

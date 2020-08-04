@@ -54,6 +54,9 @@ from scipy.optimize import minimize
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 
+# PrettyTables
+from prettytable import PrettyTable
+
 
 class Fluid:
     def __init__(
@@ -661,6 +664,38 @@ class Motor:
         print()
         print("Nozzle exit diameter (mm): {:.1f}".format(self.exit_diameter * 10 ** 3))
         print()
+
+    def report_ptable(self):
+
+        x = PrettyTable()
+
+        x.field_names = ["Parameter", "Value", "Units"]
+
+        x.add_row(["Thrust",round(self.thrust,2), 'N'])
+        x.add_row(["Burn time", round(self.burn_time,2), 'Seconds'])
+        x.add_row(["Chamber pressure", round(self.p_chamber/10**5,2), 'bar'])
+        x.add_row(["Adiabatic chamber temperature", round(self.To,2), 'K'])
+        x.add_row(["Molecular Weight of exhaust products", round(self.M,2), 'kg/kmol'])
+        x.add_row(["Ratio of specific heats of exhaust products", round(self.k,2), '-'])
+        x.add_row(["Combustion efficiency", round(self.n_cstar,2), '%'])
+        x.add_row(["Thrust coefficient efficiency", round(self.n_cf,2), '%'])
+        x.add_row(["Pressure on oxidiser tank", round(self.oxidizer.storage_pressure/10**5,2), 'bar'])
+        x.add_row(["Temperature on oxidiser tank", round(self.oxidizer.storage_temperature,2), 'K'])
+        x.add_row(["Pressure on fuel tank", round(self.fuel.storage_pressure/10**5,2), 'bar'])
+        x.add_row(["Temperature on fuel tank", round(self.fuel.storage_temperature,2), 'K'])
+        x.add_row(["Characteristic velocity", round(self.cstar,2), 'm/s'])
+        x.add_row(["Thrust coefficient", round(self.cf,2), '-'])
+        x.add_row(["Specific impulse", round(self.Isp,2), 'Seconds'])
+        x.add_row(["Volumetric Specific impulse", round(self.Iv,2), 'Ns/m³'])
+        x.add_row(["Total mass flow rate", round(self.total_mass_flow,3), 'kg/s'])
+        x.add_row(["Oxidiser mass flow rate", round(self.ox_mass_flow,3), 'kg/s'])
+        x.add_row(["Fuel mass flow rate", round(self.fuel_mass_flow,3), 'kg/s'])
+        x.add_row(["Total oxidiser mass", round(self.ox_mass_total,3), 'kg'])
+        x.add_row(["Total fuel mass", round(self.fuel_mass_total,3), 'kg'])
+        x.add_row(["Nozzle throat diameter", round(self.throat_diameter*10**3,1), 'mm'])
+        x.add_row(["Nozzle exit diameter", round(self.exit_diameter*10**3,1), 'mm'])
+
+        print(x)
 
     def print_cea_output(self):
         """Prints NASA CEA output file."""
