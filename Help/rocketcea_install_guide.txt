@@ -1,0 +1,47 @@
+ROCKET CEA INSTALL GUIDE
+
+1 - Install FORTRAN compiler
+
+- For detailed guide, go to: https://rocketcea.readthedocs.io/en/latest/installgfortran.html#link-installgfortran
+OR
+- Go to https://sourceforge.net/projects/mingw-w64/
+- Click on files
+- Donwload x86_64-win32-seh zip archive
+- Unzip archive into user-created folder C:\ProgramFiles\MinGW
+- Go to Windows 10 search box and type: Environment Variables. Control Panel will open
+- Click on Environment Variables...
+- On System Variables, edit Path, to include:
+
+C:\MinGW\mingw64\bin
+C:\MinGW\mingw64\lib
+
+- Exclude any other related MinGW variables, if needed
+
+2 - Install Visual Studios C++ Build Tools
+
+- Go to https://visualstudio.microsoft.com/downloads/# and download Community version
+- On Available, check Build Tools for C++ and, on the right, check ONLY:
+
+MSVC v142 VS 2019 C++ x64/x86 build tools
+WINDOWS 10 SDK (10.0.18362.0)
+
+- These should be the first two tools. Proceed with the installation, it will take some minutes.
+
+3 - Install Rocket CEA
+
+- After installantion, run Anaconda prompt AS ADMINISTRATOR and type 
+pip install rocketcea. 
+
+- It should issue no problems.
+- Try to run the following code on a Notebook:
+
+from rocketcea.cea_obj import CEA_Obj, add_new_fuel, add_new_oxidizer, add_new_propellant
+
+- It should deliver an error related to DLL, and refers to a folder like:
+
+...\Lib\site-packages\rocketcea
+
+- Find that folder (it should be at the Python installation folder)
+- Go into sub-folder .libs
+- Copy the DLL from this subfolder to the previous folder
+- rocketcea should be fully functioning by now.
