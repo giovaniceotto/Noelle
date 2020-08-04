@@ -666,36 +666,51 @@ class Motor:
         print()
 
     def report_ptable(self):
+        
+        performance_tab = PrettyTable()
+        geometric_tab = PrettyTable()
+        injector_tab = PrettyTable()
+        propellant_tab = PrettyTable()
 
-        x = PrettyTable()
+        performance_tab.field_names = ["Performance parameters", "Value", "Units"]
+        injector_tab.field_names = ["Injector parameters", "Value", "Units"]
+        geometric_tab.field_names = ["Geometric parameters", "Value", "Units"]
 
-        x.field_names = ["Parameter", "Value", "Units"]
+        performance_tab.add_row(["Thrust",round(self.thrust,2), 'N'])
+        performance_tab.add_row(["Burn time", round(self.burn_time,2), 'Seconds'])
+        performance_tab.add_row(["Chamber pressure", round(self.p_chamber/10**5,2), 'bar'])
+        performance_tab.add_row(["Adiabatic chamber temperature", round(self.To,2), 'K'])
+        performance_tab.add_row(["Molecular Weight of exhaust products", round(self.M,2), 'kg/kmol'])
+        performance_tab.add_row(["Ratio of specific heats of exhaust products", round(self.k,2), '-'])
+        performance_tab.add_row(["Combustion efficiency", round(100*self.n_cstar,2), '%'])
+        performance_tab.add_row(["Thrust coefficient efficiency", round(100*self.n_cf,2), '%'])
+        injector_tab.add_row(["Pressure on oxidiser tank", round(self.oxidizer.storage_pressure/10**5,2), 'bar'])
+        injector_tab.add_row(["Temperature on oxidiser tank", round(self.oxidizer.storage_temperature,2), 'K'])
+        injector_tab.add_row(["Pressure on fuel tank", round(self.fuel.storage_pressure/10**5,2), 'bar'])
+        injector_tab.add_row(["Temperature on fuel tank", round(self.fuel.storage_temperature,2), 'K'])
+        performance_tab.add_row(["Characteristic velocity", round(self.cstar,2), 'm/s'])
+        performance_tab.add_row(["Thrust coefficient", round(self.cf,2), '-'])
+        performance_tab.add_row(["Specific impulse", round(self.Isp,2), 'Seconds'])
+        performance_tab.add_row(["Volumetric Specific impulse", round(self.Iv,2), 'Ns/m³'])
+        injector_tab.add_row(["Total mass flow rate", round(self.total_mass_flow,3), 'kg/s'])
+        injector_tab.add_row(["Oxidiser mass flow rate", round(self.ox_mass_flow,3), 'kg/s'])
+        injector_tab.add_row(["Fuel mass flow rate", round(self.fuel_mass_flow,3), 'kg/s'])
+        injector_tab.add_row(["Total oxidiser mass", round(self.ox_mass_total,3), 'kg'])
+        injector_tab.add_row(["Total fuel mass", round(self.fuel_mass_total,3), 'kg'])
+        geometric_tab.add_row(["Nozzle throat diameter", round(self.throat_diameter*10**3,1), 'mm'])
+        geometric_tab.add_row(["Nozzle exit diameter", round(self.exit_diameter*10**3,1), 'mm'])
 
-        x.add_row(["Thrust",round(self.thrust,2), 'N'])
-        x.add_row(["Burn time", round(self.burn_time,2), 'Seconds'])
-        x.add_row(["Chamber pressure", round(self.p_chamber/10**5,2), 'bar'])
-        x.add_row(["Adiabatic chamber temperature", round(self.To,2), 'K'])
-        x.add_row(["Molecular Weight of exhaust products", round(self.M,2), 'kg/kmol'])
-        x.add_row(["Ratio of specific heats of exhaust products", round(self.k,2), '-'])
-        x.add_row(["Combustion efficiency", round(self.n_cstar,2), '%'])
-        x.add_row(["Thrust coefficient efficiency", round(self.n_cf,2), '%'])
-        x.add_row(["Pressure on oxidiser tank", round(self.oxidizer.storage_pressure/10**5,2), 'bar'])
-        x.add_row(["Temperature on oxidiser tank", round(self.oxidizer.storage_temperature,2), 'K'])
-        x.add_row(["Pressure on fuel tank", round(self.fuel.storage_pressure/10**5,2), 'bar'])
-        x.add_row(["Temperature on fuel tank", round(self.fuel.storage_temperature,2), 'K'])
-        x.add_row(["Characteristic velocity", round(self.cstar,2), 'm/s'])
-        x.add_row(["Thrust coefficient", round(self.cf,2), '-'])
-        x.add_row(["Specific impulse", round(self.Isp,2), 'Seconds'])
-        x.add_row(["Volumetric Specific impulse", round(self.Iv,2), 'Ns/m³'])
-        x.add_row(["Total mass flow rate", round(self.total_mass_flow,3), 'kg/s'])
-        x.add_row(["Oxidiser mass flow rate", round(self.ox_mass_flow,3), 'kg/s'])
-        x.add_row(["Fuel mass flow rate", round(self.fuel_mass_flow,3), 'kg/s'])
-        x.add_row(["Total oxidiser mass", round(self.ox_mass_total,3), 'kg'])
-        x.add_row(["Total fuel mass", round(self.fuel_mass_total,3), 'kg'])
-        x.add_row(["Nozzle throat diameter", round(self.throat_diameter*10**3,1), 'mm'])
-        x.add_row(["Nozzle exit diameter", round(self.exit_diameter*10**3,1), 'mm'])
-
-        print(x)
+        print("PERFORMANCE PARAMETERS")
+        print()
+        print(performance_tab)
+        print()
+        print("INJECTOR PARAMETERS")
+        print()
+        print(injector_tab)
+        print()
+        print("GEOMETRIC PARAMETERS")
+        print()
+        print(geometric_tab)
 
     def print_cea_output(self):
         """Prints NASA CEA output file."""
