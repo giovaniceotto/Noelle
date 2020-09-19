@@ -7,8 +7,10 @@
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+import CoolProp.CoolProp as CP
 from CoolProp.CoolProp import PropsSI
 from scipy.optimize import fsolve
+from pyswarm import pso
 
 # Defining mathematical parameters and operations
 sqrt = math.sqrt
@@ -17,6 +19,7 @@ ln = math.log
 tan = math.tan
 cos = math.cos
 sin = math.sin
+tanh = math.tanh
 
 class Nozzle:
     """Keeps all nozzle information
@@ -37,13 +40,49 @@ class Nozzle:
         self.inletTemperature = inletTemperature
         self.exitPressure = exitPressure
         self.thrust = thrust
-        #self.nozzleType = nozzleType
         self.gas = Nozzle.Fluid(gas)
-
-        self.evaluateInternalFlow()
 
         self.thetaN = 29 # deg
         self.thetaE = 9 # deg
+
+        # Other attributes
+        self.throatArea = None
+        self.throatDiameter = None
+        self.exitArea = None
+        self.exitDiameter = None
+        self.exitTemperature = None
+        self.exitMach = None
+        self.exitVelocity = None
+        self.massFlow = None
+        self.ISP = None
+
+        self.epsilon = None
+        self.xGeometry = None
+        self.yGeometry = None
+
+        self.MachFunction = None
+        self.temperatureFunction = None
+
+        self.channelHeight = None
+        self.channelWidth = None
+        self.channelLength = None
+        self.numberOfChannels = None
+        self.coolantMassFlow = None
+        self.coolantInletTemperature = None
+        self.coolantPressure = None
+        self.coolant = None
+        self.coolant.waterFraction = None
+        self.wallConductivity = None
+        self.wallThickness = None
+
+        self.coolant.h = None
+
+        self.gas.h = None
+        self.PressureFunction = None
+
+        # Running methods
+        self.evaluateInternalFlow()
+
 
         return None
 
@@ -131,7 +170,7 @@ class Nozzle:
 
         return None
 
-    def evaluateBellContour(self, n=550):
+    def evaluateGeometry(self, n=500):
         """Evaluates the bell-nozzle geometry
 
             n: number of points in the discretization
@@ -213,10 +252,13 @@ class Nozzle:
 
         return None
 
-    def temperatureProfile(self):
+    def evaluateTemperatureFunction(self, n=500):
         gamma = self.gas.gamma
         throatArea = self.throatArea
         inletTemperature = self.inletTemperature
+
+        if self.xGeometry == None or self.yGeometry == None:
+            self.evaluateGeometry(n)
 
         xGeometry = self.xGeometry
         yGeometry = self.yGeometry
@@ -257,28 +299,33 @@ class Nozzle:
         self,
         channelHeight,
         channelWidth,
+        channelLength,
         numberOfChannels,
         coolantMassFlow,
         coolantInletTemperature,
         coolantPressure,
         coolantType,
+        coolantWaterFraction,
         k,
         wallThickness
         ):
 
         self.channelHeight = channelHeight
         self.channelWidth = channelWidth
+        self.channelLength = channelLength
         self.numberOfChannels = numberOfChannels
         self.coolantMassFlow = coolantMassFlow
         self.coolantInletTemperature = coolantInletTemperature
         self.coolantPressure = coolantPressure
 
         self.coolant = Nozzle.Fluid(coolantType)
+        self.coolant.waterFraction = coolantWaterFraction
 
         self.wallConductivity = k
         self.wallThickness = wallThickness
 
         self.coolantH()
+        self.hotH()
 
         return None
 
@@ -289,11 +336,23 @@ class Nozzle:
         massFlow = self.coolantMassFlow
         inletTemperature = self.coolantInletTemperature
         coolantPressure = self.coolantPressure
+
+        x = 1 - self.coolant.waterFraction
+
+        HEOS = CP.AbstractState('HEOS', 'Ethanol&Water')
+        HEOS.set_mass_fractions([x, 1 - x])
+
+        HEOS.update(CP.PT_INPUTS, coolantPressure, inletTemperature)
+        
+        Pr = HEOS.Prandtl()
+        k = HEOS.conductivity()
+        rho = HEOS.rhomass()
+        viscosity = HEOS.viscosity()
             
-        rho = self.coolant.getRho(coolantPressure, inletTemperature)
-        viscosity = self.coolant.getViscosity(coolantPressure, inletTemperature)
-        k = self.coolant.getK(coolantPressure, inletTemperature)
-        Pr = self.coolant.getPr(coolantPressure, inletTemperature)
+        #rho = self.coolant.getRho(coolantPressure, inletTemperature)
+        #viscosity = self.coolant.getViscosity(coolantPressure, inletTemperature)
+        #k = self.coolant.getK(coolantPressure, inletTemperature)
+        #Pr = self.coolant.getPr(coolantPressure, inletTemperature)
 
         channelArea = channelWidth*channelHeight
         channelDiameter = 4*channelArea/(2*(channelHeight + channelWidth))
@@ -313,9 +372,15 @@ class Nozzle:
 
         return h
     
-    def hotH(self):
+    def hotH(self, n=500):
+        if self.xGeometry == None or self.yGeometry == None:
+            self.evaluateGeometry(n)
+
         xGeometry = self.xGeometry
         yGeometry = self.yGeometry
+
+        if self.temperatureFunction == None or self.MachFunction == None:
+            self.evaluateTemperatureFunction(n)
 
         mach_contour = self.MachFunction
         temperature_profile = self.temperatureFunction
@@ -355,14 +420,41 @@ class Nozzle:
 
         return None
 
-    def wallTemperature(self):
-        self.coolantH()
-        self.hotH()
+    def fin_efficiency(self, finThickness, T_b):
+        k = self.wallConductivity
+        h = self.coolant.h
+        channelHeight = self.channelHeight
+        channelLength = self.channelLength
+        inletTemperature = self.coolantInletTemperature
 
+        L_fin = channelHeight
+        P = 2*channelLength + 2*finThickness
+        Ac = channelLength*finThickness
+        theta_b = T_b - inletTemperature
+        M_f = sqrt(k*h*P*Ac)*theta_b
+        m_f = sqrt(h*P/(k*Ac))
+        q_fin = M_f*tanh(m_f*L_fin)
+        
+        efficiency = q_fin/(h*Ac*theta_b)
+
+        return efficiency
+
+    def wallTemperature(self, finModel=True, n=500):
+
+        if self.xGeometry == None or self.yGeometry == None:
+            self.evaluateGeometry(n)
         xGeometry = self.xGeometry
+        yGeometry = self.yGeometry
 
-        coolantTemperature = self.coolantInletTemperature
+        if self.temperatureFunction == None:
+            self.evaluateTemperatureFunction(n)
         temperature_profile = self.temperatureFunction
+
+        channelWidth = self.channelWidth
+        numberOfChannels = self.numberOfChannels
+        numberOfChannels = round(numberOfChannels)
+        numberOfFins = numberOfChannels
+        coolantTemperature = self.coolantInletTemperature
         hCoolant = self.coolant.h
         hGas = self.gas.h
         k = self.wallConductivity
@@ -371,19 +463,80 @@ class Nozzle:
         wall_temperature_profile = []
 
         for i in range(len(xGeometry)):
+            if finModel == True:
+                D_i = 2*yGeometry[i]
+                finThickness = (pi*D_i - numberOfChannels*channelWidth)/numberOfFins
+
+                if finThickness < 0:
+                    return None
+
             T_inf1 = temperature_profile[i]
             T_inf2 = coolantTemperature
             h1 = hGas[i]
             h2 = hCoolant
+
             Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + h1/h2)
+
+            if finModel == True:
+                T_b = Tw1
+
+                finEfficiency = self.fin_efficiency(finThickness, T_b)
+            
+                x = (pi*D_i)/(finEfficiency*numberOfFins*finThickness + numberOfChannels*channelWidth)
+                Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + x*h1/h2)
+
             wall_temperature_profile.append(Tw1)
 
         self.wallTemperatureFunction = wall_temperature_profile
         
         return None
 
+    def max_wall_temperature(self, i_list, n=100):
+        # i_list: list of indexes for which the wall temperature shall be evaluated
+        channelWidth = self.channelWidth
+        numberOfChannels = self.numberOfChannels
+        numberOfChannels = round(numberOfChannels)
+        coolantTemperature = self.coolantInletTemperature
+        numberOfFins = numberOfChannels
+
+        self.coolantH()
+        self.hotH()
+        self.evaluateTemperatureFunction()
+
+        yGeometry = self.yGeometry
+        temperature_profile = self.temperatureFunction
+        hCoolant = self.coolant.h
+        hGas = self.gas.h
+        k = self.wallConductivity
+        t = self.wallThickness
+
+        wall_temperature_profile = []
+
+        for i in i_list:
+            D_i = 2*yGeometry[i]
+            
+            finThickness = (pi*D_i - numberOfChannels*channelWidth)/numberOfFins
+
+            if finThickness < 0:
+                return 3000
+            
+            T_inf1 = temperature_profile[i]
+            T_inf2 = coolantTemperature
+            h1 = hGas[i]
+            h2 = hCoolant
+            
+            T_b = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + h1/h2)
+
+            finEfficiency = self.fin_efficiency(finThickness, T_b)
+            
+            x = (pi*D_i)/(finEfficiency*numberOfFins*finThickness + numberOfChannels*channelWidth)
+            Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + x*h1/h2)
+            wall_temperature_profile.append(Tw1)
+            
+        return(max(wall_temperature_profile))
+
     def geometryPlot(self, n=550):
-        self.evaluateBellContour(n)
+        self.evaluateGeometry(n)
         x_vector = self.xGeometry
         y_vector = self.yGeometry
 
@@ -393,11 +546,11 @@ class Nozzle:
         x_vector1 = x_vector[0: i1]
         y_vector1 = y_vector[0: i1]
 
-        x_vector2 = x_vector[i1: i2]
-        y_vector2 = y_vector[i1: i2]
+        x_vector2 = x_vector[(i1-1): i2]
+        y_vector2 = y_vector[(i1-1): i2]
 
-        x_vector3 = x_vector[i2:]
-        y_vector3 = y_vector[i2:]
+        x_vector3 = x_vector[(i2-1):]
+        y_vector3 = y_vector[(i2-1):]
 
         x_axis = np.array([x_vector[-1], x_vector[0]])
         y_axis = np.array([0, 0])
@@ -428,7 +581,7 @@ class Nozzle:
         return None
         
     def exportGeometry(self, n=550, plot=False):
-        self.evaluateBellContour(n)
+        self.evaluateGeometry(n)
         x_vector = self.xGeometry
         y_vector = self.yGeometry
 
@@ -507,8 +660,8 @@ class Nozzle:
         return None
             
     def getPlots(self, n=550):
-        self.evaluateBellContour(n)
-        self.temperatureProfile()
+        self.evaluateGeometry(n)
+        self.evaluateTemperatureFunction()
         self.wallTemperature()
 
         x_bell_contour = self.xGeometry
@@ -559,3 +712,68 @@ class Nozzle:
         plt.show()
 
         return None
+
+def objective_function(parameters, n=50):
+    inletPressure = parameters[0]
+    inletTemperature = parameters[1]
+    channelHeight = parameters[2]
+    channelWidth = parameters[3]
+    numberOfChannels = parameters[4]
+    coolantMassFlow = parameters[5]
+    coolantInletTemperature = parameters[6]
+    coolantWaterFraction = parameters[7]
+     
+    exitPressure = 100000
+    thrust = 1000
+    gas = 'Air'
+    channelLength = 40e-3
+    k = 401
+    wallThickness = 2e-3
+    coolantPressure = inletPressure
+    coolantType = 'Ethanol'
+
+    NOELLE = Nozzle(inletPressure,
+        inletTemperature,
+        exitPressure,
+        thrust,
+        gas)
+
+    NOELLE.addCooling(
+        channelHeight,
+        channelWidth,
+        channelLength,
+        numberOfChannels,
+        coolantMassFlow,
+        coolantInletTemperature,
+        coolantPressure,
+        coolantType,
+        coolantWaterFraction,
+        k,
+        wallThickness
+        )
+
+    NOELLE.evaluateGeometry(n)
+
+    i_list = [0, round(0.1*n), round(0.2*n)]
+    objFunction = NOELLE.max_wall_temperature(i_list)
+
+    return objFunction
+
+def optimize(lb, ub, j):
+    """This function runs the Particle Swarm Optimization algorithm from the pyswarm library
+    to minimize the required input torque. The algorithm is run for i times and the best solution
+    among them is saved. It is subjected to lower bounds (lb) and upper bounds (ub). 
+    It returns the optimum found."""
+
+    xopt = []
+    fopt = 0
+
+    for i in range(j):
+        xopt_i, fopt_i = pso(objective_function, lb, ub, swarmsize=500, maxiter=100, minstep=1e-6, minfunc=1e-5, debug=True)
+        if fopt_i < fopt:
+            fopt = fopt_i
+            xopt = xopt_i
+        i += 1
+
+    return xopt, fopt
+
