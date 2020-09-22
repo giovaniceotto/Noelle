@@ -276,9 +276,10 @@ class FluidMixture:
             )
         else:
             self.name = blends.newOxBlend(
-                fuelL=[self.fluid1.name, self.fluid2.name],
-                fuelPcentL=[self.x1, self.x2],
+                oxL=[self.fluid1.name, self.fluid2.name],
+                oxPcentL=[self.x1, self.x2],
             )
+        
         # Create HEOS CoolProp object
         self.HEOS = CoolProp.AbstractState("HEOS", self.coolprop_name)
         self.HEOS.set_mass_fractions([self.x1 / 100, self.x2 / 100])
@@ -680,7 +681,7 @@ class Motor:
 
         performance_tab.add_row(["Thrust",round(self.thrust,2), 'N'])
         performance_tab.add_row(["Burn time", round(self.burn_time,2), 'Seconds'])
-        performance_tab.add_row(["Chamber pressure", round(self.p_chamber/10**5,2), 'bar'])
+        performance_tab.add_row(["Chamber pressure", round(self.p_chamber,2), 'bar'])
         performance_tab.add_row(["Adiabatic chamber temperature", round(self.To,2), 'K'])
         performance_tab.add_row(["Molecular Weight of exhaust products", round(self.M,2), 'kg/kmol'])
         performance_tab.add_row(["Ratio of specific heats of exhaust products", round(self.k,2), '-'])
@@ -739,15 +740,19 @@ class Motor:
             Pc=self.p_chamber,
             MR=self.OF_ratio,
             PcOvPe=self.p_chamber / self.Pa,
+            subar=None,
             eps=area_ratio,
             show_transport=1,
             pc_units="bar",
             output="siunits",
             show_mass_frac=True,
+            frozen=1,
+            frozenAtThroat=1,
+            fac_CR=2,
         )
         print(cea_output)
 
-    def value_cea_output(self,mystring,frozen):
+def value_cea_output(self,mystring,frozen):
         """Return a list containing values for a certain parameter of the NASA CEA txt output
            The parameter is computed at different sections of the combustion chamber/nozzle, according to the input file,
            which leads to different values
@@ -823,8 +828,6 @@ class Motor:
 
         return values
 
-
-
 # Good for debugging in VSCode
 if __name__ == "__main__":
     # Oxidizer
@@ -867,6 +870,6 @@ if __name__ == "__main__":
         n_cf=1,
         cd_ox=0.6,
         cd_fuel=0.182,
-        suboptimal=1,
+        phi=1,
     )
     NOELLE.report()
