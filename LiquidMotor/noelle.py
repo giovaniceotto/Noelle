@@ -57,6 +57,9 @@ import matplotlib as mpl
 # PrettyTables
 from prettytable import PrettyTable
 
+# Sys
+import sys
+
 
 class Fluid:
     def __init__(
@@ -670,7 +673,6 @@ class Motor:
         performance_tab = PrettyTable()
         geometric_tab = PrettyTable()
         injector_tab = PrettyTable()
-        propellant_tab = PrettyTable()
 
         performance_tab.field_names = ["Performance parameters", "Value", "Units"]
         injector_tab.field_names = ["Injector parameters", "Value", "Units"]
@@ -744,6 +746,83 @@ class Motor:
             show_mass_frac=True,
         )
         print(cea_output)
+
+    def value_cea_output(self,mystring,frozen):
+        """Return a list containing values for a certain parameter of the NASA CEA txt output
+           The parameter is computed at different sections of the combustion chamber/nozzle, according to the input file,
+           which leads to different values
+        
+        mystring - Defines the required paramenter
+                   T - Temperature, K
+                   gamma - Ratio of specific heats
+                   visc - Viscosity, milipoise
+                   cond - Conductivity, MILLIWATTS/(CM)(K)
+                   Pr - Prandtl Number
+
+        frozen - Conductivity and Prandtl Number are available for frozen or equilibrium assumptions
+                 True or False  
+        """
+
+        if mystring == 'T':
+            mystring = 'T, K'
+        elif mystring == 'gamma':
+            mystring = 'GAMMAs'
+        elif mystring == 'visc':
+            mystring = 'VISC,MILLIPOISE'
+        elif mystring == 'cond':
+            mystring = 'CONDUCTIVITY'
+            conductivity_counter = 0
+        elif mystring == 'Pr':
+            mystring = 'PRANDTL NUMBER'
+        else:
+            print('Wrong string input')
+            exit()
+        
+        try:
+            f = open('cea_output.txt')
+            f.close()
+        except:
+            orig_stdout = sys.stdout
+            f = open('cea_output.txt', 'w')
+            sys.stdout = f
+
+            self.print_cea_output()
+
+            sys.stdout = orig_stdout
+            f.close()
+
+        number = ''
+        values = []
+        with open('cea_output.txt') as f:
+            for line in f:
+                if mystring in line:
+                    if mystring == 'CONDUCTIVITY' and conductivity_counter == 0:
+                        conductivity_counter = 1
+                        continue    
+                    if frozen == True and mystring == 'CONDUCTIVITY':
+                        frozen = False
+                        continue
+                    if frozen == True and mystring == 'PRANDTL NUMBER':
+                        frozen = False
+                        continue
+                    else:
+                        for i in range(len(line)):
+                            try:
+                                if line[i] == '.':
+                                    number = number + line[i]
+                                else:    
+                                    isnumber = int(line[i])
+                                    number = number + line[i]
+                            except:
+                                if not number:
+                                    pass
+                                else:
+                                    values.append(float(number))
+                                    number = ''
+                    break
+
+        return values
+
 
 
 # Good for debugging in VSCode
