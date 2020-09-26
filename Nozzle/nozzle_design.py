@@ -33,7 +33,8 @@ class Nozzle:
         inletTemperature,
         exitPressure,
         thrust,
-        gas
+        gas,
+        motor
         ):
 
         self.inletPressure = inletPressure
@@ -41,6 +42,7 @@ class Nozzle:
         self.exitPressure = exitPressure
         self.thrust = thrust
         self.gas = Nozzle.Fluid(gas)
+        self.motor = motor
 
         self.thetaN = 29 # deg
         self.thetaE = 9 # deg
@@ -71,13 +73,13 @@ class Nozzle:
         self.coolantInletTemperature = None
         self.coolantPressure = None
         self.coolant = None
-        self.coolant.waterFraction = None
+        #self.coolant.waterFraction = None
         self.wallConductivity = None
         self.wallThickness = None
 
-        self.coolant.h = None
+        #self.coolant.h = None
 
-        self.gas.h = None
+        #self.gas.h = None
         self.PressureFunction = None
 
         # Running methods
@@ -94,9 +96,9 @@ class Nozzle:
 
             self.name = fluidName
 
-            if fluidName == 'Air':
-                self.gamma = 1.4 # dimensionless
-                self.R = 287 # J/kg.K
+            #if fluidName == 'Air':
+                #self.gamma = self.motor.k # dimensionless
+                #self.R = 8314.462/self.motor.M # J/kg.K
             #elif fluidName == "CombustionProducts":
 
             #elif fluidName == 'Ethanol':
@@ -126,8 +128,8 @@ class Nozzle:
     def evaluateInternalFlow(self):
         # Physical properties and constants
         gravity = 9.81 # m/s²
-        gamma = self.gas.gamma
-        R = self.gas.R
+        gamma = self.motor.k
+        R = 8314.462/self.motor.M
 
         # Design parameters
         thrust = self.thrust
@@ -158,6 +160,7 @@ class Nozzle:
 
         specificImpulse = exitVelocity/gravity
 
+        # Storing important parameters
         self.throatArea = throatArea
         self.throatDiameter = throatDiameter
         self.exitArea = exitArea
@@ -253,11 +256,11 @@ class Nozzle:
         return None
 
     def evaluateTemperatureFunction(self, n=500):
-        gamma = self.gas.gamma
+        gamma = self.motor.k
         throatArea = self.throatArea
         inletTemperature = self.inletTemperature
 
-        if self.xGeometry == None or self.yGeometry == None:
+        if self.xGeometry is None or self.yGeometry is None:
             self.evaluateGeometry(n)
 
         xGeometry = self.xGeometry
@@ -301,9 +304,9 @@ class Nozzle:
         channelWidth,
         channelLength,
         numberOfChannels,
-        coolantMassFlow,
-        coolantInletTemperature,
-        coolantPressure,
+        #coolantMassFlow,
+        #coolantInletTemperature,
+        #coolantPressure,
         coolantType,
         coolantWaterFraction,
         k,
@@ -314,9 +317,9 @@ class Nozzle:
         self.channelWidth = channelWidth
         self.channelLength = channelLength
         self.numberOfChannels = numberOfChannels
-        self.coolantMassFlow = coolantMassFlow
-        self.coolantInletTemperature = coolantInletTemperature
-        self.coolantPressure = coolantPressure
+        self.coolantMassFlow = self.motor.fuel_mass_flow
+        self.coolantInletTemperature = self.motor.fuel.storage_temperature
+        self.coolantPressure = self.motor.fuel.storage_pressure
 
         self.coolant = Nozzle.Fluid(coolantType)
         self.coolant.waterFraction = coolantWaterFraction
@@ -373,7 +376,7 @@ class Nozzle:
         return h
     
     def hotH(self, n=500):
-        if self.xGeometry == None or self.yGeometry == None:
+        if self.xGeometry is None or self.yGeometry is None:
             self.evaluateGeometry(n)
 
         xGeometry = self.xGeometry
@@ -383,27 +386,34 @@ class Nozzle:
             self.evaluateTemperatureFunction(n)
 
         mach_contour = self.MachFunction
-        temperature_profile = self.temperatureFunction
+        #temperature_profile = self.temperatureFunction
         inletPressure = self.inletPressure
-        gamma = self.gas.gamma
+        gamma = self.motor.k
         massFlowRate = self.massFlow
 
         pressure_profile = []
         h_profile = []
 
+        rho_vector, viscosity_vector, Pr_vector, k_vector = self.motor.calculate_transport_properties(yGeometry)
+
         for i in range(len(xGeometry)):
             M_i = mach_contour[i]
-            T_i = temperature_profile[i]
+            #T_i = temperature_profile[i]
             P_i = inletPressure*((1 + 0.5*(gamma - 1)*(M_i**2))**(-gamma/(gamma - 1)))
             pressure_profile.append(P_i)
 
             D_i = 2*yGeometry[i]
             A_i = 0.25*pi*D_i**2
             
-            rho = PropsSI('D', 'T', T_i, 'P', P_i, 'Air')
-            viscosity = PropsSI('viscosity', 'T', T_i, 'P', P_i, 'Air')
-            Pr = PropsSI('Prandtl', 'T', T_i, 'P', P_i, 'Air')
-            k = PropsSI('conductivity', 'T', T_i, 'P', P_i, 'Air')
+            #rho = PropsSI('D', 'T', T_i, 'P', P_i, 'Air')
+            #viscosity = PropsSI('viscosity', 'T', T_i, 'P', P_i, 'Air')
+            #Pr = PropsSI('Prandtl', 'T', T_i, 'P', P_i, 'Air')
+            #k = PropsSI('conductivity', 'T', T_i, 'P', P_i, 'Air')
+
+            rho = rho_vector[i]
+            viscosity = viscosity_vector[i]
+            Pr = Pr_vector[i]
+            k = k_vector[i]
 
             flowRate = massFlowRate/rho
             velocity = flowRate/A_i
@@ -441,7 +451,7 @@ class Nozzle:
 
     def wallTemperature(self, finModel=True, n=500):
 
-        if self.xGeometry == None or self.yGeometry == None:
+        if self.xGeometry is None or self.yGeometry is None:
             self.evaluateGeometry(n)
         xGeometry = self.xGeometry
         yGeometry = self.yGeometry
@@ -715,47 +725,74 @@ class Nozzle:
 
 def objective_function(parameters, n=50):
     inletPressure = parameters[0]
-    inletTemperature = parameters[1]
-    channelHeight = parameters[2]
-    channelWidth = parameters[3]
-    numberOfChannels = parameters[4]
-    coolantMassFlow = parameters[5]
-    coolantInletTemperature = parameters[6]
-    coolantWaterFraction = parameters[7]
-     
+    channelHeight = parameters[1]
+    channelWidth = parameters[2]
+    numberOfChannels = parameters[3]
+    coolantWaterFraction = parameters[5]
+    phi = parameters[6]
+
+    x1 = 100 - coolantWaterFraction*100
+    x2 = coolantWaterFraction*100
+    p_chamber = inletPressure/(10**5)
+    
+    #coolantMassFlow = 0.1
+
     exitPressure = 100000
     thrust = 1000
     gas = 'Air'
     channelLength = 40e-3
     k = 401
     wallThickness = 2e-3
-    coolantPressure = inletPressure
     coolantType = 'Ethanol'
 
-    NOELLE = Nozzle(inletPressure,
+    # Oxidizer
+    NOX =  Fluid(name='N2O', coolprop_name='NitrousOxide', formula=None, fluid_type='oxidizer', storage_temperature=298.15)
+
+    # Fuels
+    H2O = Fluid(name='H2O(L)', coolprop_name='water', formula='H 2 O 1', fluid_type='fuel', storage_pressure=60e5, storage_temperature=298.15)
+
+    LC2H5OH = Fluid(name='C2H5OH(L)', coolprop_name='ethanol', formula='C 2 H 6 O 1', fluid_type='fuel', storage_pressure=60e5, storage_temperature=298.15)
+
+    H2O_C2H50H = FluidMixture(fluid1=LC2H5OH, x1=x1, fluid2=H2O, x2=x2)
+
+    NOELLE = Motor(
+        NOX,
+        H2O_C2H50H,
+        thrust = thrust,
+        burn_time = 10,
+        p_chamber = p_chamber,
+        n_cstar = 1,
+        n_cf = 1,
+        cd_ox = 0.6,
+        cd_fuel = 0.182,
+        phi = phi
+        )
+
+    inletTemperature = NOELLE.To
+
+    NOELLE_Nozzle = Nozzle(inletPressure,
         inletTemperature,
         exitPressure,
         thrust,
-        gas)
+        gas,
+        NOELLE
+        )
 
-    NOELLE.addCooling(
+    NOELLE_Nozzle.addCooling(
         channelHeight,
         channelWidth,
         channelLength,
         numberOfChannels,
-        coolantMassFlow,
-        coolantInletTemperature,
-        coolantPressure,
         coolantType,
         coolantWaterFraction,
         k,
         wallThickness
         )
 
-    NOELLE.evaluateGeometry(n)
+    NOELLE_Nozzle.evaluateGeometry(n)
 
     i_list = [0, round(0.1*n), round(0.2*n)]
-    objFunction = NOELLE.max_wall_temperature(i_list)
+    objFunction = NOELLE_Nozzle.max_wall_temperature(i_list)
 
     return objFunction
 
@@ -769,7 +806,7 @@ def optimize(lb, ub, j):
     fopt = 0
 
     for i in range(j):
-        xopt_i, fopt_i = pso(objective_function, lb, ub, swarmsize=500, maxiter=100, minstep=1e-6, minfunc=1e-5, debug=True)
+        xopt_i, fopt_i = pso(objective_function, lb, ub, swarmsize=50, maxiter=100, minstep=1e-6, minfunc=1e-5, debug=True)
         if fopt_i < fopt:
             fopt = fopt_i
             xopt = xopt_i
