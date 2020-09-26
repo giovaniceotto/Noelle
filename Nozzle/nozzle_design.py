@@ -12,6 +12,8 @@ from CoolProp.CoolProp import PropsSI
 from scipy.optimize import fsolve
 from pyswarm import pso
 
+from noelle import *
+
 # Defining mathematical parameters and operations
 sqrt = math.sqrt
 pi = math.pi
@@ -327,8 +329,8 @@ class Nozzle:
         self.wallConductivity = k
         self.wallThickness = wallThickness
 
-        self.coolantH()
-        self.hotH()
+        # self.coolantH()
+        # self.hotH()
 
         return None
 
@@ -510,7 +512,7 @@ class Nozzle:
         numberOfFins = numberOfChannels
 
         self.coolantH()
-        self.hotH()
+        self.hotH(n)
         self.evaluateTemperatureFunction()
 
         yGeometry = self.yGeometry
@@ -728,8 +730,8 @@ def objective_function(parameters, n=50):
     channelHeight = parameters[1]
     channelWidth = parameters[2]
     numberOfChannels = parameters[3]
-    coolantWaterFraction = parameters[5]
-    phi = parameters[6]
+    coolantWaterFraction = 0 # parameters[4]
+    phi = parameters[4]
 
     x1 = 100 - coolantWaterFraction*100
     x2 = coolantWaterFraction*100
@@ -814,3 +816,11 @@ def optimize(lb, ub, j):
 
     return xopt, fopt
 
+if __name__ == "__main__":
+    # Optimization lower and upper bounds
+    lb = np.array([20e5, 0.5e-3, 0.5e-3, 10, 0.9])
+    ub = np.array([40e5,   3e-3,   3e-3, 60, 1.1])
+
+    # Running the optimization
+    x_opt, f_opt = optimize(lb, ub, 2)
+    T_min = f_opt
