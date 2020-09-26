@@ -1,1 +1,8 @@
+numpy
+matplotlib
+scipy
+SciencePlots
+matplotlib-label-lines
 coolprop
+rocketcea
+PTable
