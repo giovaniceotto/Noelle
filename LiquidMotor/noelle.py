@@ -48,7 +48,7 @@ import CoolProp.CoolProp as CoolProp
 import numpy as np
 
 # Scipy
-from scipy.optimize import minimize
+# from scipy.optimize import minimize
 
 # Matplotlib
 from matplotlib import pyplot as plt
@@ -59,6 +59,7 @@ from prettytable import PrettyTable
 
 # Sys
 import sys
+import os
 
 
 class Fluid:
@@ -715,7 +716,7 @@ class Motor:
         print()
         print(geometric_tab)
 
-    def print_cea_output(self):
+    def print_cea_output(self, subar=None, supar=None):
         """Prints NASA CEA output file."""
         cea_analysis = CEA_Obj(
             oxName=self.oxidizer.name,
@@ -740,8 +741,8 @@ class Motor:
             Pc=self.p_chamber,
             MR=self.OF_ratio,
             PcOvPe=self.p_chamber / self.Pa,
-            subar=None,
-            eps=area_ratio,
+            subar=subar,
+            eps=supar,
             show_transport=1,
             pc_units="bar",
             output="siunits",
@@ -752,7 +753,7 @@ class Motor:
         )
         print(cea_output)
 
-    def value_cea_output(self,frozen):
+    def value_cea_output(self, frozen, subar, supar):
         """Return a list containing values for a certain parameter of the NASA CEA txt output
            The parameter is computed at different sections of the combustion chamber/nozzle, according to the input file,
            which leads to different values
@@ -776,7 +777,7 @@ class Motor:
         f = open('cea_output.txt', 'w')
         sys.stdout = f
 
-        self.print_cea_output()
+        self.print_cea_output(subar, supar)
 
         sys.stdout = orig_stdout
         f.close()
@@ -904,16 +905,34 @@ class Motor:
             else:
                 continue
 
-        
-        values = np.array([temperature,new_density,gamma,viscosity,conductivity,prandtl])
+        return temperature, new_density, gamma, viscosity, conductivity, prandtl
 
-        return values
-
-    def calculate_transport_properties(self,radius_mesh):
+    def calculate_transport_properties(self, radius_mesh):
         """
         radius_mesh - vector with radius
         Return [rho, visc, prandtl, conductivity]
         """
+        # Calculate areas
+        throat_index = np.argmin(radius_mesh)
+        throat_radius = radius_mesh[throat_index]
+        area_mesh = np.pi*np.array(radius_mesh)**2
+        area_ratios_mesh = area_mesh/(np.pi*throat_radius**2)
+
+        # Separate sub and supersonic area ratios
+        subar = area_ratios_mesh[:throat_index]
+        supar = area_ratios_mesh[throat_index:]
+
+
+
+        # Get transport properties
+        temperature, density, gamma, viscosity, conductivity, prandtl = self.value_cea_output(frozen=False, subar=subar, supar=supar)
+
+        density = density[3:]
+        viscosity = viscosity[3:]
+        prandtl = prandtl[3:]
+        conductivity = conductivity[3:]
+
+        return density, viscosity, prandtl, conductivity         
 
 # Good for debugging in VSCode
 if __name__ == "__main__":
@@ -959,4 +978,6 @@ if __name__ == "__main__":
         cd_fuel=0.182,
         phi=1,
     )
-    NOELLE.report()
+    
+    density, viscosity, prandtl, conductivity = NOELLE.calculate_transport_properties(np.array([1.5, 1.3, 1, 1.4, 1.6])**0.5/np.pi)
+    print()
