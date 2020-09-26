@@ -746,71 +746,122 @@ class Motor:
             pc_units="bar",
             output="siunits",
             show_mass_frac=True,
-            frozen=1,
+            frozen=0,
             frozenAtThroat=1,
-            fac_CR=2,
+            #fac_CR=2,
         )
         print(cea_output)
 
-def value_cea_output(self,mystring,frozen):
+    def value_cea_output(self,frozen):
         """Return a list containing values for a certain parameter of the NASA CEA txt output
            The parameter is computed at different sections of the combustion chamber/nozzle, according to the input file,
            which leads to different values
-        
-        mystring - Defines the required paramenter
-                   T - Temperature, K
-                   gamma - Ratio of specific heats
-                   visc - Viscosity, milipoise
-                   cond - Conductivity, MILLIWATTS/(CM)(K)
-                   Pr - Prandtl Number
+
+        T - Temperature, K
+        gamma - Ratio of specific heats
+        visc - Viscosity, milipoise
+        cond - Conductivity, MILLIWATTS/(CM)(K)
+        Pr - Prandtl Number
 
         frozen - Conductivity and Prandtl Number are available for frozen or equilibrium assumptions
                  True or False  
         """
-
-        if mystring == 'T':
-            mystring = 'T, K'
-        elif mystring == 'gamma':
-            mystring = 'GAMMAs'
-        elif mystring == 'visc':
-            mystring = 'VISC,MILLIPOISE'
-        elif mystring == 'cond':
-            mystring = 'CONDUCTIVITY'
-            conductivity_counter = 0
-        elif mystring == 'Pr':
-            mystring = 'PRANDTL NUMBER'
-        else:
-            print('Wrong string input')
-            exit()
         
         try:
-            f = open('cea_output.txt')
-            f.close()
+            os.remove('cea_output.txt')
         except:
-            orig_stdout = sys.stdout
-            f = open('cea_output.txt', 'w')
-            sys.stdout = f
+            pass
 
-            self.print_cea_output()
+        orig_stdout = sys.stdout
+        f = open('cea_output.txt', 'w')
+        sys.stdout = f
 
-            sys.stdout = orig_stdout
-            f.close()
+        self.print_cea_output()
+
+        sys.stdout = orig_stdout
+        f.close()
 
         number = ''
+
         values = []
+
+        conductivity_counter = 0
+        end_prandtl = False
+        end_cond = False
+
+        temperature = []
+        density = []
+        gamma = []
+        viscosity = []
+        conductivity = []
+        prandtl = []
+
         with open('cea_output.txt') as f:
             for line in f:
-                if mystring in line:
-                    if mystring == 'CONDUCTIVITY' and conductivity_counter == 0:
+                if 'T, K' in line:
+                    for i in range(len(line)):
+                        try:
+                            if line[i] == '.':
+                                number = number + line[i]
+                            else:    
+                                isnumber = int(line[i])
+                                number = number + line[i]
+                        except:
+                            if not number:
+                                pass
+                            else:
+                                temperature.append(float(number))
+                                number = ''
+                if 'RHO, KG/CU M' in line:
+                    for i in range(len(line)):
+                        try:
+                            if line[i] == '.':
+                                number = number + line[i]
+                            else:    
+                                isnumber = int(line[i])
+                                number = number + line[i]
+                        except:
+                            if not number:
+                                pass
+                            else:
+                                density.append(float(number))
+                                number = ''                          
+                elif 'GAMMAs' in line:
+                    for i in range(len(line)):
+                        try:
+                            if line[i] == '.':
+                                number = number + line[i]
+                            else:    
+                                isnumber = int(line[i])
+                                number = number + line[i]
+                        except:
+                            if not number:
+                                pass
+                            else:
+                                gamma.append(float(number))
+                                number = ''
+                elif 'VISC,MILLIPOISE' in line:
+                    for i in range(len(line)):
+                        try:
+                            if line[i] == '.':
+                                number = number + line[i]
+                            else:    
+                                isnumber = int(line[i])
+                                number = number + line[i]
+                        except:
+                            if not number:
+                                pass
+                            else:
+                                viscosity.append(float(number))
+                                number = ''
+                elif 'CONDUCTIVITY' in line:
+                    if conductivity_counter == 0:
                         conductivity_counter = 1
                         continue    
-                    if frozen == True and mystring == 'CONDUCTIVITY':
+                    if frozen == True:
                         frozen = False
                         continue
-                    if frozen == True and mystring == 'PRANDTL NUMBER':
-                        frozen = False
-                        continue
-                    else:
+                    elif end_cond == False:
                         for i in range(len(line)):
                             try:
                                 if line[i] == '.':
@@ -822,11 +873,47 @@ def value_cea_output(self,mystring,frozen):
                                 if not number:
                                     pass
                                 else:
-                                    values.append(float(number))
+                                    conductivity.append(float(number))
                                     number = ''
-                    break
+                        end_cond = True
+                elif 'PRANDTL NUMBER' in line: 
+                    if frozen == True:
+                        frozen = False
+                        continue
+                    elif end_prandtl == False:
+                        for i in range(len(line)):
+                            try:
+                                if line[i] == '.':
+                                    number = number + line[i]
+                                else:    
+                                    isnumber = int(line[i])
+                                    number = number + line[i]
+                            except:
+                                if not number:
+                                    pass
+                                else:
+                                    prandtl.append(float(number))
+                                    number = ''
+                        end_prandtl = True
+
+        #TODO - Reading density
+        new_density = []
+        for i in range(len(density)-1):
+            if i % 2 == 0:
+                new_density.append(density[i]*10**(-density[i+1]))
+            else:
+                continue
+
+        
+        values = np.array([temperature,new_density,gamma,viscosity,conductivity,prandtl])
 
         return values
+
+    def calculate_transport_properties(self,radius_mesh):
+        """
+        radius_mesh - vector with radius
+        Return [rho, visc, prandtl, conductivity]
+        """
 
 # Good for debugging in VSCode
 if __name__ == "__main__":
