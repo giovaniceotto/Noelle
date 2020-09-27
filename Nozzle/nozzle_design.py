@@ -522,6 +522,36 @@ class Nozzle:
 
         wall_temperature_profile = []
 
+        mach_contour = self.MachFunction
+        #temperature_profile = self.temperatureFunction
+        inletPressure = self.inletPressure
+        gamma = self.motor.k
+        massFlowRate = self.massFlow
+
+        rho_vector, viscosity_vector, Pr_vector, k_vector = self.motor.calculate_transport_properties(yGeometry)
+
+        for i in range(len(xGeometry)):
+            M_i = mach_contour[i]
+            #T_i = temperature_profile[i]
+            P_i = inletPressure*((1 + 0.5*(gamma - 1)*(M_i**2))**(-gamma/(gamma - 1)))
+            pressure_profile.append(P_i)
+
+            D_i = 2*yGeometry[i]
+            A_i = 0.25*pi*D_i**2
+
+            rho = rho_vector[i]
+            viscosity = viscosity_vector[i]
+            Pr = Pr_vector[i]
+            k = k_vector[i]
+
+            flowRate = massFlowRate/rho
+            velocity = flowRate/A_i
+            reynolds = rho*velocity*D_i/viscosity
+
+            Nu = 0.023*reynolds**(4/5)*Pr**(0.3)
+            
+            h = Nu*k/D_i
+
         for i in i_list:
             D_i = 2*yGeometry[i]
             
