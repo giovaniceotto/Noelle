@@ -258,7 +258,7 @@ class Nozzle:
                 x0 = fsolve(funct, 1.5)
             if supersonic == False:
                 x0 = fsolve(funct, 0.5)
-            return x0
+            return float(x0)
 
         mach_contour = []
         for i in range(len(yGeometry)):
@@ -318,6 +318,8 @@ class Nozzle:
 
         if self.gasName == 'CombustionProducts':
             rho_vector, viscosity_vector, Pr_vector, k_vector = self.motor.calculate_transport_properties(yGeometry)
+            viscosity_vector = np.array(viscosity_vector)/10000
+            k_vector = np.array(k_vector)/10
 
         elif self.gasName == 'Air':
             rho_vector = []
@@ -338,7 +340,7 @@ class Nozzle:
             Pr_vector = None
             k_vector = None
 
-        self.rho_vector = rho_vector
+        self.rho_vector = np.array(rho_vector)
         self.viscosity_vector = viscosity_vector
         self.Pr_vector = Pr_vector
         self.k_vector = k_vector
