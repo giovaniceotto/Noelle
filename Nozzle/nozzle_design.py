@@ -37,7 +37,7 @@ class Nozzle:
         thrust,
         gas,
         motor=False,
-        n=500
+        n=100
         ):
 
         # Storing input parameters as attributes of the Nozzle object
@@ -60,7 +60,7 @@ class Nozzle:
             self.R = 8314.462/self.motor.M # J/kg.K
 
         # Bell-shaped Nozzle parameters, taken from Sutton
-        self.thetaN = 29 # deg
+        self.thetaN = 19 # deg
         self.thetaE = 9 # deg
 
         # Initializing other attributes that will be used further
@@ -781,13 +781,13 @@ class Nozzle:
 
         return None
 
-def objective_function(parameters, n=50):
+def objective_function(parameters):
     inletPressure = parameters[0]
     channelHeight = parameters[1]
     channelWidth = parameters[2]
     numberOfChannels = parameters[3]
-    coolantWaterFraction = 0 # parameters[4]
-    phi = parameters[4]
+    coolantWaterFraction = parameters[4]
+    phi = parameters[5]
 
     x1 = 100 - coolantWaterFraction*100
     x2 = coolantWaterFraction*100
@@ -851,11 +851,12 @@ def objective_function(parameters, n=50):
     max_wall_temp = NOELLE_Nozzle.max_wall_temperature(n_points)
 
     # Objective is to maximize ISP
-    if max_wall_temp > 800:
-        objFunction = -100
+    #if max_wall_temp > 800:
+    #    objFunction = -100
+    #else:
+    #    objFunction = - NOELLE.Isp
 
-    else:
-        objFunction = - NOELLE.Isp
+    objFunction = max_wall_temp
 
     return objFunction
 
@@ -869,7 +870,7 @@ def optimize(lb, ub, j):
     fopt = 0
 
     for i in range(j):
-        xopt_i, fopt_i = pso(objective_function, lb, ub, swarmsize=50, maxiter=100, minstep=1e-6, minfunc=1e-5, debug=True)
+        xopt_i, fopt_i = pso(objective_function, lb, ub, swarmsize=1000, maxiter=100, minstep=1e-6, minfunc=1e-5, debug=True)
         if fopt_i < fopt:
             fopt = fopt_i
             xopt = xopt_i
