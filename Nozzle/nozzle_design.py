@@ -366,13 +366,14 @@ class Nozzle:
         self.numberOfChannels = numberOfChannels
 
         if self.motor == False:
-            self.coolantMassFlow=self.motor.fuel_mass_flow,
-            self.coolantInletTemperature=self.motor.fuel.storage_temperature,
-            self.coolantPressure=self.motor.fuel.storage_pressure
-        else:
             self.coolantMassFlow = coolantMassFlow
             self.coolantInletTemperature = coolantInletTemperature
             self.coolantPressure = coolantPressure
+            
+        else:
+            self.coolantMassFlow=self.motor.fuel_mass_flow,
+            self.coolantInletTemperature=self.motor.fuel.storage_temperature,
+            self.coolantPressure=self.motor.fuel.storage_pressure
 
         self.coolantType = coolantType
         self.waterFraction = coolantWaterFraction
@@ -508,6 +509,8 @@ class Nozzle:
             h1 = hGas[i]
             h2 = hCoolant
 
+            Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + h1/h2)
+
             if finModel == True:
                 T_b = Tw1
 
@@ -515,9 +518,6 @@ class Nozzle:
             
                 x = (pi*D_i)/(finEfficiency*numberOfFins*finThickness + numberOfChannels*channelWidth)
                 Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + x*h1/h2)
-
-            else:
-                Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + h1/h2)
 
             wall_temperature_profile.append(Tw1)
 
