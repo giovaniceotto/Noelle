@@ -801,7 +801,7 @@ def objective_function(parameters):
     channelLength = 40e-3
     k = 401
     wallThickness = 2e-3
-    coolantType = 'Ethanol'
+    coolantType = 'Ethanol+Water'
 
     # Oxidizer
     NOX =  Fluid(name='N2O', coolprop_name='NitrousOxide', formula=None, fluid_type='oxidizer', storage_temperature=298.15)
