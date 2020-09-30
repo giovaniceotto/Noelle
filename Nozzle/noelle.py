@@ -910,6 +910,7 @@ class Motor:
         """
         # Calculate areas
         throat_index = np.argmin(radius_mesh)
+        print("Throat index:", throat_index)
         throat_radius = radius_mesh[throat_index]
         area_mesh = np.pi*np.array(radius_mesh)**2
         area_ratios_mesh = area_mesh/(np.pi*throat_radius**2)
@@ -921,14 +922,23 @@ class Motor:
         all_conductivity = []
         all_prandtl = []
 
+        subar = area_ratios_mesh[:throat_index]
+        supar = area_ratios_mesh[throat_index:]
+
         i = 0
-        while i < len(area_ratios_mesh):
-            current_area_ratios = area_ratios_mesh[i:i+5]
-            # Separate sub and supersonic area ratios
-            subar = current_area_ratios[:throat_index]
-            supar = current_area_ratios[throat_index:]
+        while i < len(subar):
             # Get transport properties
-            temperature, density, gamma, viscosity, conductivity, prandtl = self.value_cea_output(frozen=False, subar=subar, supar=supar)
+            temperature, density, gamma, viscosity, conductivity, prandtl = self.value_cea_output(frozen=False, subar=subar[i:i+5], supar=[])
+            all_density += density[3:]
+            all_viscosity += viscosity[3:]
+            all_prandtl += prandtl[3:]
+            all_conductivity += conductivity[3:]
+            i = i + 5
+
+        i = 0
+        while i < len(supar):
+            # Get transport properties
+            temperature, density, gamma, viscosity, conductivity, prandtl = self.value_cea_output(frozen=False, subar=[], supar=supar[i:i+5])
             all_density += density[3:]
             all_viscosity += viscosity[3:]
             all_prandtl += prandtl[3:]
