@@ -285,8 +285,7 @@ class Nozzle:
         T = self.coolantInletTemperature
         P = self.coolantPressure
 
-        if self.coolantType == 'Ethanol' or (self.coolantType == 'Ethanol+Water' and x == 0):
-
+        if self.coolantType == 'Ethanol':
             self.coolant_rho = PropsSI('D', 'T', T, 'P', P, self.coolantType)
             self.coolant_viscosity = PropsSI('viscosity', 'T', T, 'P', P, self.coolantType)
             self.coolant_k = PropsSI('conductivity', 'T', T, 'P', P, self.coolantType)
@@ -357,6 +356,7 @@ class Nozzle:
         coolantWaterFraction,
         k,
         wallThickness,
+        coolantExcess=1,
         coolantMassFlow=False,
         coolantInletTemperature=False,
         coolantPressure=False
@@ -368,14 +368,14 @@ class Nozzle:
         self.numberOfChannels = numberOfChannels
 
         if self.motor == False:
-            self.coolantMassFlow = coolantMassFlow
+            self.coolantMassFlow = coolantExcess*coolantMassFlow
             self.coolantInletTemperature = coolantInletTemperature
             self.coolantPressure = coolantPressure
             
         else:
-            self.coolantMassFlow=self.motor.fuel_mass_flow,
-            self.coolantInletTemperature=self.motor.fuel.storage_temperature,
-            self.coolantPressure=self.motor.fuel.storage_pressure
+            self.coolantMassFlow = coolantExcess*self.motor.fuel_mass_flow
+            self.coolantInletTemperature = self.motor.fuel.storage_temperature
+            self.coolantPressure = self.motor.fuel.storage_pressure
 
         self.coolantType = coolantType
         self.waterFraction = coolantWaterFraction
@@ -580,8 +580,9 @@ class Nozzle:
             D_i = 2*yGeometry[i]
             
             finThickness = (pi*D_i - numberOfChannels*channelWidth)/numberOfFins
+            minFinThickness = (pi*self.throatDiameter - numberOfChannels*channelWidth)/numberOfFins
 
-            if finThickness < 0:
+            if minFinThickness < 0:
                 return 3000
             
             T_inf1 = temperature_profile[i]
@@ -788,9 +789,10 @@ def objective_function(parameters):
     numberOfChannels = parameters[3]
     coolantWaterFraction = parameters[4]
     phi = parameters[5]
+    coolantExcess = parameters[6]
 
     x1 = 100 - coolantWaterFraction*100
-    x2 = coolantWaterFraction*100
+    x2 = 100 - x1
     p_chamber = inletPressure/(10**5)
     
     #coolantMassFlow = 0.1
@@ -844,7 +846,8 @@ def objective_function(parameters):
         coolantType,
         coolantWaterFraction,
         k,
-        wallThickness
+        wallThickness,
+        coolantExcess=coolantExcess,
         )
 
     n_points = 3
@@ -880,8 +883,8 @@ def optimize(lb, ub, j):
 
 if __name__ == "__main__":
     # Optimization lower and upper bounds
-    lb = np.array([20e5, 0.5e-3, 0.5e-3, 10, 0.9])
-    ub = np.array([40e5,   3e-3,   3e-3, 60, 1.1])
+    lb = np.array([15e5, 0.5e-3, 0.5e-3, 10,    0, 0.6])
+    ub = np.array([45e5,   4e-3,   4e-3, 60, 0.05, 1.5])
 
     # Running the optimization
     x_opt, f_opt = optimize(lb, ub, 2)
