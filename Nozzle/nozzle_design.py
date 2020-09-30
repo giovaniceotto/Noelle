@@ -350,7 +350,6 @@ class Nozzle:
         self,
         channelHeight,
         channelWidth,
-        channelLength,
         numberOfChannels,
         coolantType,
         coolantWaterFraction,
@@ -364,7 +363,6 @@ class Nozzle:
 
         self.channelHeight = channelHeight
         self.channelWidth = channelWidth
-        self.channelLength = channelLength
         self.numberOfChannels = numberOfChannels
 
         if self.motor == False:
@@ -400,6 +398,7 @@ class Nozzle:
         channelVelocity = channelFlowRate/channelArea
 
         reynolds = rho*channelVelocity*channelDiameter/viscosity
+        self.coolantReynolds = reynolds
 
         if reynolds >= 10000:
             Nu = 0.023*reynolds**(4/5)*Pr**(0.4)
@@ -454,22 +453,15 @@ class Nozzle:
         
         return None
 
-    def fin_efficiency(self, finThickness, T_b):
+    def fin_efficiency(self, finThickness):
         k = self.wallConductivity
         h = self.coolantH
         channelHeight = self.channelHeight
-        channelLength = self.channelLength
-        inletTemperature = self.coolantInletTemperature
 
+        t = finThickness
         L_fin = channelHeight
-        P = 2*channelLength + 2*finThickness
-        Ac = channelLength*finThickness
-        theta_b = T_b - inletTemperature
-        M_f = sqrt(k*h*P*Ac)*theta_b
-        m_f = sqrt(h*P/(k*Ac))
-        q_fin = M_f*tanh(m_f*L_fin)
-        
-        efficiency = q_fin/(h*Ac*theta_b)
+
+        efficiency = sqrt(2*k/(h*t))*tanh(sqrt(2*h/(k*t))*L_fin)
 
         return efficiency
 
@@ -497,6 +489,7 @@ class Nozzle:
         t = self.wallThickness
 
         wall_temperature_profile = []
+        fin_efficiency_vector = []
 
         for i in range(len(xGeometry)):
             if finModel == True:
@@ -511,19 +504,20 @@ class Nozzle:
             h1 = hGas[i]
             h2 = hCoolant
 
-            Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + h1/h2)
-
             if finModel == True:
-                T_b = Tw1
-
-                finEfficiency = self.fin_efficiency(finThickness, T_b)
+                finEfficiency = self.fin_efficiency(finThickness)
+                fin_efficiency_vector.append(finEfficiency)
             
                 x = (pi*D_i)/(finEfficiency*numberOfFins*finThickness + numberOfChannels*channelWidth)
                 Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + x*h1/h2)
 
+            else:
+                Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + h1/h2)
+
             wall_temperature_profile.append(Tw1)
 
         self.wallTemperatureFunction = wall_temperature_profile
+        self.finEfficiencyFunction = fin_efficiency_vector
         
         return None
 
@@ -590,9 +584,7 @@ class Nozzle:
             h1 = hGas[i]
             h2 = hCoolant
             
-            T_b = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + h1/h2)
-
-            finEfficiency = self.fin_efficiency(finThickness, T_b)
+            finEfficiency = self.fin_efficiency(finThickness)
             
             x = (pi*D_i)/(finEfficiency*numberOfFins*finThickness + numberOfChannels*channelWidth)
             Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + x*h1/h2)
@@ -733,15 +725,8 @@ class Nozzle:
         self.evaluateTemperatureFunction()
         self.wallTemperature()
 
-        x_bell_contour = self.xGeometry
-        mach_contour = self.MachFunction
-        temperature_profile = self.temperatureFunction
-        pressure_profile = self.pressureFunction
-        wall_temperature_profile = self.wallTemperatureFunction
-        h1_profile = self.gasH
-
         plt.figure(dpi=150)
-        plt.plot(x_bell_contour*1000, mach_contour, 'b')
+        plt.plot(self.xGeometry*1000, self.MachFunction, 'b')
         plt.xlabel("x [mm]")
         plt.ylabel("M(x)")
         plt.grid(True)
@@ -749,7 +734,7 @@ class Nozzle:
         plt.show()
 
         plt.figure(dpi=150)
-        plt.plot(x_bell_contour*1000, temperature_profile, 'b')
+        plt.plot(self.xGeometry*1000, self.temperatureFunction, 'b')
         plt.xlabel("x [mm]")
         plt.ylabel("T(x) [K]")
         plt.grid(True)
@@ -757,7 +742,7 @@ class Nozzle:
         plt.show()
 
         plt.figure(dpi=150)
-        plt.plot(x_bell_contour*1000, pressure_profile, 'b')
+        plt.plot(self.xGeometry*1000, self.pressureFunction, 'b')
         plt.xlabel("x [mm]")
         plt.ylabel("P(x) [Pa]")
         plt.grid(True)
@@ -765,22 +750,73 @@ class Nozzle:
         plt.show()
 
         plt.figure(dpi=150)
-        plt.plot(1000*np.array(x_bell_contour), wall_temperature_profile, 'b')
-        plt.xlabel("x [mm]")
-        plt.ylabel(r"$T_{w, max}$ [K]")
-        plt.grid(True)
-        #plt.savefig('wall_temp_profile.png', dpi=300)
-        plt.show()
-
-        plt.figure(dpi=150)
-        plt.plot(1000*np.array(x_bell_contour), h1_profile, 'b')
+        plt.plot(1000*np.array(self.xGeometry), self.gasH, 'b')
         plt.xlabel("x [mm]")
         plt.ylabel(r"$h_{1}$ [W/m²K]")
         plt.grid(True)
         #plt.savefig('h1_contour.png', dpi=300)
         plt.show()
 
+        plt.figure(dpi=150)
+        plt.plot(1000*np.array(self.xGeometry), self.finEfficiencyFunction, 'b')
+        plt.xlabel("x [mm]")
+        plt.ylabel(r"$ \epsilon_{fin} $ []")
+        plt.grid(True)
+        #plt.savefig('h1_contour.png', dpi=300)
+        plt.show()
+
+        plt.figure(dpi=150)
+        plt.plot(1000*np.array(self.xGeometry), self.wallTemperatureFunction, 'b')
+        plt.xlabel("x [mm]")
+        plt.ylabel(r"$T_{w, max}$ [K]")
+        plt.grid(True)
+        #plt.savefig('wall_temp_profile.png', dpi=300)
+        plt.show()
+
         return None
+
+    def allInfo(self):
+        self.wallTemperature()
+
+        print("Input nozzle data: \n")
+        print("Inlet Pressure: ", self.inletPressure/1000, "kPa")
+        print("Inlet Temperature: ", self.inletTemperature, "K")
+        print("Thrust: ", self.thrust, "N")
+        print("Discretization: ", self.discretization, "\n \n")
+
+        print("Input cooling data: \n")
+        print("Channel Height: ", self.channelHeight*1000, "mm")
+        print("Channel Width: ", self.channelWidth*1000, "mm")
+        print("Number of channels: ", self.numberOfChannels)
+        print("Coolant mass flow: ", self.coolantMassFlow, "kg/s")
+        print("Coolant Temperature: ", self.coolantInletTemperature, "K")
+        print("Coolant Pressure: ", self.coolantPressure/1000, "kPa")
+        print("Coolant Type: ", self.coolantType)
+        print("Coolant water fraction: ", self.waterFraction, "%")
+        print("Wall conductivity: ", self.wallConductivity, "W/mK")
+        print("Wall thickness: ", self.wallThickness*1000, "mm")
+
+        self.geometryPlot()
+
+        print("Nozzle design parameters: \n")
+        print("Throat diameter: ", self.throatDiameter*1000, "mm")
+        print("Exit diameter: ", self.exitDiameter*1000, "mm")
+        print("Epsilon: ", self.epsilon)
+        print("Exit temperature: ", self.exitTemperature, "K")
+        print("Exit Mach: ", self.exitMach)
+        print("Exit velocity: ", self.exitVelocity, "m/s")
+        print("Nozzle mass flow rate: ", self.massFlow, "kg/s")
+        print("Specific Impulse (ISP): ", self.ISP, "s \n \n")
+
+        print("Coolant data: \n")
+        print("Coolant rho: ", self.coolant_rho)
+        print("Coolant viscosity: ", self.coolant_viscosity)
+        print("Coolant conductivity (k): ", self.coolant_k)
+        print("Coolant Prandtl number (Pr): ", self.coolant_Pr)
+        print("Reynolds number: ", self.coolantReynolds)
+        print("Coolant convective heat transfer coefficient: ", self.coolantH, "W/m²K")
+
+        self.getPlots()
 
 def objective_function(parameters):
     inletPressure = parameters[0]
@@ -800,7 +836,6 @@ def objective_function(parameters):
     exitPressure = 100000
     thrust = 1000
     gas = 'CombustionProducts'
-    channelLength = 40e-3
     k = 401
     wallThickness = 2e-3
     coolantType = 'Ethanol+Water'
@@ -841,7 +876,6 @@ def objective_function(parameters):
     NOELLE_Nozzle.addCooling(
         channelHeight,
         channelWidth,
-        channelLength,
         numberOfChannels,
         coolantType,
         coolantWaterFraction,
