@@ -89,14 +89,17 @@ class Nozzle:
         self.coolantInletTemperature = None
         self.coolantPressure = None
         self.coolant = None
-        #self.coolant.waterFraction = None
+        self.coolantWaterFraction = None
         self.wallConductivity = None
         self.wallThickness = None
 
-        #self.coolant.h = None
+        self.gasH = None
+        self.coolantH = None
 
-        #self.gas.h = None
         self.pressureFunction = None
+
+        self.finEfficiencyFunction = None
+        self.finThicknessFunction = None
 
         # Running evaluateInternalFlow method, that will calculate the main design parameters
         self.evaluateInternalFlow()
@@ -339,7 +342,7 @@ class Nozzle:
             Pr_vector = None
             k_vector = None
 
-        self.rho_vector = np.array(rho_vector)
+        self.rho_vector = rho_vector
         self.viscosity_vector = viscosity_vector
         self.Pr_vector = Pr_vector
         self.k_vector = k_vector
@@ -404,9 +407,14 @@ class Nozzle:
             Nu = 0.023*reynolds**(4/5)*Pr**(0.4)
         elif reynolds <= 2300: 
             Nu = 4.36
+        elif reynolds < 10000 and reynolds > 3000:
+            # Gnielinski correlation
+            f = (0.79*np.log(reynolds) - 1.64)**(-2)
+            Nu = (Pr*(f/8)*(reynolds - 1000))/(1 + 12.7*((f/8)**(0.5))*(Pr**(2/3) -1))
         else:
-            # Interpolating between the two values (laminar and turbulent)
-            Nu = 4.36 + (reynolds - 2300)*(0.023*10000**(4/5)*Pr**(0.4) - 4.36)/(10000 - 2300)
+            # Interpolating
+            f = (0.79*np.log(3000) - 1.64)**(-2)
+            Nu = 4.36 + ((reynolds - 2300)/(3000 - 2300))*((Pr*(f/8)*(3000 - 1000))/(1 + 12.7*((f/8)**(0.5))*(Pr**(2/3) -1)) - 4.36)
 
         h = Nu*k/channelDiameter
 
@@ -503,6 +511,7 @@ class Nozzle:
                 fin_thickness_vector.append(finThickness)
 
                 if finThickness < 0.5e-3:
+                    print('Error: Fin Thickness is smaller than 0.5 mm')
                     return None
 
             T_inf1 = temperature_profile[i]
@@ -807,11 +816,9 @@ class Nozzle:
         print("Coolant Temperature: ", self.coolantInletTemperature, "K")
         print("Coolant Pressure: ", self.coolantPressure/1000, "kPa")
         print("Coolant Type: ", self.coolantType)
-        print("Coolant water fraction: ", self.waterFraction, "%")
+        print("Coolant water fraction: ", self.waterFraction*100, "%")
         print("Wall conductivity: ", self.wallConductivity, "W/mK")
-        print("Wall thickness: ", self.wallThickness*1000, "mm")
-
-        self.geometryPlot()
+        print("Wall thickness: ", self.wallThickness*1000, "mm \n \n")
 
         print("Nozzle design parameters: \n")
         print("Throat diameter: ", self.throatDiameter*1000, "mm")
@@ -829,7 +836,9 @@ class Nozzle:
         print("Coolant conductivity (k): ", self.coolant_k)
         print("Coolant Prandtl number (Pr): ", self.coolant_Pr)
         print("Reynolds number: ", self.coolantReynolds)
-        print("Coolant convective heat transfer coefficient: ", self.coolantH, "W/m²K")
+        print("Coolant convective heat transfer coefficient: ", self.coolantH, "W/m²K \n \n")
+
+        self.geometryPlot()
 
         self.getPlots()
 
@@ -843,26 +852,41 @@ def objective_function(parameters):
     coolantExcess = parameters[6]
     thrust = parameters[7]
 
-    x1 = 100 - coolantWaterFraction*100
-    x2 = 100 - x1
+    x2 = round(coolantWaterFraction*100, 2)
+    x1 = 100 - x2
     p_chamber = inletPressure/(10**5)
-    
-    #coolantMassFlow = 0.1
+    storage_pressure = inletPressure + 25e5
 
     exitPressure = 100000
-    #thrust = 1000
     gas = 'CombustionProducts'
     k = 401
     wallThickness = 2e-3
     coolantType = 'Ethanol+Water'
 
     # Oxidizer
-    NOX =  Fluid(name='N2O', coolprop_name='NitrousOxide', formula=None, fluid_type='oxidizer', storage_temperature=298.15)
+    NOX =  Fluid(
+        name='N2O', 
+        coolprop_name='NitrousOxide', 
+        formula=None, 
+        fluid_type='oxidizer', 
+        storage_temperature=298.15)
 
     # Fuels
-    H2O = Fluid(name='H2O(L)', coolprop_name='water', formula='H 2 O 1', fluid_type='fuel', storage_pressure=60e5, storage_temperature=298.15)
+    H2O = Fluid(
+        name='H2O(L)', 
+        coolprop_name='water', 
+        formula='H 2 O 1', 
+        fluid_type='fuel', 
+        storage_pressure=storage_pressure, 
+        storage_temperature=298.15)
 
-    LC2H5OH = Fluid(name='C2H5OH(L)', coolprop_name='ethanol', formula='C 2 H 6 O 1', fluid_type='fuel', storage_pressure=60e5, storage_temperature=298.15)
+    LC2H5OH = Fluid(
+        name='C2H5OH(L)', 
+        coolprop_name='ethanol', 
+        formula='C 2 H 6 O 1', 
+        fluid_type='fuel', 
+        storage_pressure=storage_pressure, 
+        storage_temperature=298.15)
 
     H2O_C2H50H = FluidMixture(fluid1=LC2H5OH, x1=x1, fluid2=H2O, x2=x2)
 
@@ -911,10 +935,12 @@ def objective_function(parameters):
         max_wall_temp = 3000
 
     # Objective is to maximize ISP
-    if max_wall_temp > 750:
-        objFunction = - NOELLE.Isp + (max_wall_temp - 750)*(200/2000)
-    else:
-        objFunction = - NOELLE.Isp
+    #if max_wall_temp > 750:
+    #    objFunction = - NOELLE.Isp + (max_wall_temp - 750)*(300/2000)
+    #else:
+    #    objFunction = - NOELLE.Isp
+
+    objFunction = max_wall_temp
 
     return objFunction
 
@@ -928,7 +954,7 @@ def optimize(lb, ub, j):
     fopt = 0
 
     for i in range(j):
-        xopt_i, fopt_i = pso(objective_function, lb, ub, swarmsize=1000, maxiter=50, minstep=1e-6, minfunc=1e-5, debug=True)
+        xopt_i, fopt_i = pso(objective_function, lb, ub, swarmsize=500, maxiter=50, minstep=1e-6, minfunc=1e-5, debug=True)
         if fopt_i < fopt:
             fopt = fopt_i
             xopt = xopt_i
