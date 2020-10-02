@@ -402,8 +402,12 @@ class Nozzle:
 
         if reynolds >= 10000:
             Nu = 0.023*reynolds**(4/5)*Pr**(0.4)
-        else: 
+        elif reynolds <= 2300: 
             Nu = 4.36
+        else:
+            # Interpolating between the two values (laminar and turbulent)
+            Nu = 4.36 + (reynolds - 2300)*(0.023*10000**(4/5)*Pr**(0.4) - 4.36)/(10000 - 2300)
+
         h = Nu*k/channelDiameter
 
         self.coolantH = h
@@ -490,13 +494,15 @@ class Nozzle:
 
         wall_temperature_profile = []
         fin_efficiency_vector = []
+        fin_thickness_vector = []
 
         for i in range(len(xGeometry)):
             if finModel == True:
                 D_i = 2*yGeometry[i]
                 finThickness = (pi*D_i - numberOfChannels*channelWidth)/numberOfFins
+                fin_thickness_vector.append(finThickness)
 
-                if finThickness < 0:
+                if finThickness < 0.5e-3:
                     return None
 
             T_inf1 = temperature_profile[i]
@@ -518,6 +524,7 @@ class Nozzle:
 
         self.wallTemperatureFunction = wall_temperature_profile
         self.finEfficiencyFunction = fin_efficiency_vector
+        self.finThicknessFunction = fin_thickness_vector
         
         return None
 
@@ -576,7 +583,7 @@ class Nozzle:
             finThickness = (pi*D_i - numberOfChannels*channelWidth)/numberOfFins
             minFinThickness = (pi*self.throatDiameter - numberOfChannels*channelWidth)/numberOfFins
 
-            if minFinThickness < 0:
+            if minFinThickness < 0.5e-3:
                 return 3000
             
             T_inf1 = temperature_profile[i]
@@ -762,7 +769,15 @@ class Nozzle:
         plt.xlabel("x [mm]")
         plt.ylabel(r"$ \epsilon_{fin} $ []")
         plt.grid(True)
-        #plt.savefig('h1_contour.png', dpi=300)
+        #plt.savefig('finEfficiency_contour.png', dpi=300)
+        plt.show()
+
+        plt.figure(dpi=150)
+        plt.plot(1000*np.array(self.xGeometry), 1000*np.array(self.finThicknessFunction), 'b')
+        plt.xlabel("x [mm]")
+        plt.ylabel(r"$ t_{fin} $ [mm]")
+        plt.grid(True)
+        #plt.savefig('finThickness_contour.png', dpi=300)
         plt.show()
 
         plt.figure(dpi=150)
@@ -826,6 +841,7 @@ def objective_function(parameters):
     coolantWaterFraction = parameters[4]
     phi = parameters[5]
     coolantExcess = parameters[6]
+    thrust = parameters[7]
 
     x1 = 100 - coolantWaterFraction*100
     x2 = 100 - x1
@@ -834,7 +850,7 @@ def objective_function(parameters):
     #coolantMassFlow = 0.1
 
     exitPressure = 100000
-    thrust = 1000
+    #thrust = 1000
     gas = 'CombustionProducts'
     k = 401
     wallThickness = 2e-3
@@ -885,15 +901,20 @@ def objective_function(parameters):
         )
 
     n_points = 3
-    max_wall_temp = NOELLE_Nozzle.max_wall_temperature(n_points)
+
+    try:
+        max_wall_temp = NOELLE_Nozzle.max_wall_temperature(n_points)
+    except:
+        print("Error while calling max_wall_temperature() method \n")
+        print("Input parameters are:")
+        print(parameters)
+        max_wall_temp = 3000
 
     # Objective is to maximize ISP
-    #if max_wall_temp > 800:
-    #    objFunction = -100
-    #else:
-    #    objFunction = - NOELLE.Isp
-
-    objFunction = max_wall_temp
+    if max_wall_temp > 750:
+        objFunction = - NOELLE.Isp + (max_wall_temp - 750)*(200/2000)
+    else:
+        objFunction = - NOELLE.Isp
 
     return objFunction
 
@@ -907,7 +928,7 @@ def optimize(lb, ub, j):
     fopt = 0
 
     for i in range(j):
-        xopt_i, fopt_i = pso(objective_function, lb, ub, swarmsize=1000, maxiter=100, minstep=1e-6, minfunc=1e-5, debug=True)
+        xopt_i, fopt_i = pso(objective_function, lb, ub, swarmsize=1000, maxiter=50, minstep=1e-6, minfunc=1e-5, debug=True)
         if fopt_i < fopt:
             fopt = fopt_i
             xopt = xopt_i

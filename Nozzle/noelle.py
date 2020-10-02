@@ -910,7 +910,6 @@ class Motor:
         """
         # Calculate areas
         throat_index = np.argmin(radius_mesh)
-        print("Throat index:", throat_index)
         throat_radius = radius_mesh[throat_index]
         area_mesh = np.pi*np.array(radius_mesh)**2
         area_ratios_mesh = area_mesh/(np.pi*throat_radius**2)
