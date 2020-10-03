@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import CoolProp.CoolProp as CP
 from CoolProp.CoolProp import PropsSI
 from scipy.optimize import fsolve
+from scipy.integrate import simps
 from pyswarm import pso
 
 from noelle import *
@@ -75,11 +76,12 @@ class Nozzle:
         self.ISP = None
 
         self.epsilon = None
-        self.xGeometry = None
-        self.yGeometry = None
+        self.xGeometry = []
+        self.yGeometry = []
 
-        self.MachFunction = None
-        self.temperatureFunction = None
+        self.MachFunction = []
+        self.temperatureFunction = []
+        self.pressureFunction = []
 
         self.channelHeight = None
         self.channelWidth = None
@@ -93,13 +95,11 @@ class Nozzle:
         self.wallConductivity = None
         self.wallThickness = None
 
-        self.gasH = None
+        self.gasH = []
         self.coolantH = None
 
-        self.pressureFunction = None
-
-        self.finEfficiencyFunction = None
-        self.finThicknessFunction = None
+        self.finEfficiencyFunction = []
+        self.finThicknessFunction = []
 
         # Running evaluateInternalFlow method, that will calculate the main design parameters
         self.evaluateInternalFlow()
@@ -243,7 +243,7 @@ class Nozzle:
         inletTemperature = self.inletTemperature
         inletPressure = self.inletPressure
 
-        if self.xGeometry is None or self.yGeometry is None:
+        if len(self.xGeometry) == 0 or len(self.yGeometry) == 0:
             self.evaluateGeometry()
 
         xGeometry = self.xGeometry
@@ -295,7 +295,8 @@ class Nozzle:
             self.coolant_Pr = PropsSI('Prandtl', 'T', T, 'P', P, self.coolantType)
             self.coolant_Cp = PropsSI('Cpmass', 'T', T, 'P', P, self.coolantType)
 
-            self.ethanolBoilingT = PropsSI('T', 'P', P, 'Q', 1, self.coolantType)
+            # Ethanol boiling temperature at chamber pressure
+            self.ethanolBoilingT = PropsSI('T', 'P', self.inletPressure, 'Q', 1, self.coolantType)
 
         elif self.coolantType == 'Ethanol+Water':
             HEOS = CP.AbstractState('HEOS', 'Ethanol&Water')
@@ -308,9 +309,10 @@ class Nozzle:
             self.coolant_viscosity = HEOS.viscosity()
             self.coolant_Cp = HEOS.cpmass()
 
+            # Ethanol boiling temperature at chamber pressure
             HEOS_2 = CP.AbstractState('HEOS', 'Ethanol&Water')
             HEOS_2.set_mass_fractions([1 - x, x])
-            HEOS_2.update(CP.PQ_INPUTS, P, 1)
+            HEOS_2.update(CP.PQ_INPUTS, self.inletPressure, 1)
 
             self.ethanolBoilingT = HEOS_2.T()
 
@@ -433,12 +435,12 @@ class Nozzle:
         return h
     
     def getHotH(self):
-        if self.xGeometry is None or self.yGeometry is None:
+        if len(self.xGeometry) == 0 or len(self.yGeometry) == 0:
             self.evaluateGeometry()
 
         yGeometry = self.yGeometry
 
-        if self.temperatureFunction == None or self.MachFunction == None:
+        if len(self.temperatureFunction) == 0 or len(self.MachFunction) == 0:
             self.evaluateTemperatureFunction()
 
         massFlowRate = self.massFlow
@@ -488,12 +490,12 @@ class Nozzle:
         return efficiency
 
     def wallTemperature(self, finModel=True):
-        if self.xGeometry is None or self.yGeometry is None:
+        if len(self.xGeometry) == 0 or len(self.yGeometry) == 0:
             self.evaluateGeometry()
         xGeometry = self.xGeometry
         yGeometry = self.yGeometry
 
-        if self.temperatureFunction == None:
+        if len(self.temperatureFunction) == 0:
             self.evaluateTemperatureFunction()
         temperature_profile = self.temperatureFunction
 
@@ -541,13 +543,13 @@ class Nozzle:
 
             wall_temperature_profile.append(Tw1)
 
-        self.wallTemperatureFunction = np.arra(wall_temperature_profile)
+        self.wallTemperatureFunction = np.array(wall_temperature_profile)
         self.finEfficiencyFunction = np.array(fin_efficiency_vector)
         self.finThicknessFunction = np.array(fin_thickness_vector)
 
         # Calculating total heat transfer rate and Ethanol delta T
         y = self.gasH*(np.pi*2*self.yGeometry)*(self.temperatureFunction - self.wallTemperatureFunction)
-        Q_total = np.trapz(y, self.xGeometry)
+        Q_total = simps(y, self.xGeometry)
 
         deltaT_Ethanol = Q_total/(self.coolant_Cp*self.coolantMassFlow)
         ethanol_exit_temperature = deltaT_Ethanol + self.coolantInletTemperature
@@ -555,6 +557,7 @@ class Nozzle:
         self.totalQ = Q_total
         self.ethanolDeltaT = deltaT_Ethanol
         self.ethanolExitT = ethanol_exit_temperature
+        self.Qderivative = y
 
         return None
 
@@ -678,7 +681,7 @@ class Nozzle:
     def exportGeometry(self, plot=False):
         n = self.discretization
 
-        if self.xGeometry is None or self.yGeometry is None:
+        if len(self.xGeometry) == 0 or len(self.yGeometry) == 0:
             self.evaluateGeometry()
         x_vector = self.xGeometry
         y_vector = self.yGeometry
@@ -818,6 +821,15 @@ class Nozzle:
         #plt.savefig('wall_temp_profile.png', dpi=300)
         plt.show()
 
+        plt.figure(dpi=150)
+        plt.plot(1000*np.array(self.xGeometry), self.Qderivative/1000, 'b')
+        plt.xlabel("x [mm]")
+        plt.ylabel(r"$ \frac{dQ}{dx} $ [kW/m]")
+        plt.ylim(0, max(self.Qderivative)/1000)
+        plt.grid(True)
+        #plt.savefig('wall_temp_profile.png', dpi=300)
+        plt.show()
+
         return None
 
     def allInfo(self):
@@ -861,7 +873,7 @@ class Nozzle:
         print("Total heat transfer rate (Q): ", self.totalQ/1000, "kW ")
         print("Ethanol delta T: ", self.ethanolDeltaT, "K")
         print("Ethanol exit temperature: ", self.ethanolExitT, "K")
-        print("Ethanol boiling temperature: ", self.ethanolBoilingT, "K \n \n")
+        print("Ethanol boiling temperature (at chamber pressure): ", self.ethanolBoilingT, "K \n \n")
 
         self.geometryPlot()
 
