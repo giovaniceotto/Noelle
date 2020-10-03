@@ -277,9 +277,9 @@ class Nozzle:
             temperature_profile.append(inletTemperature/(1 + ((gamma - 1)/2)*M**2))
             pressure_profile.append(inletPressure*((1 + 0.5*(gamma - 1)*(M**2))**(-gamma/(gamma - 1))))
         
-        self.MachFunction = mach_contour
-        self.temperatureFunction = temperature_profile 
-        self.pressureFunction = pressure_profile
+        self.MachFunction = np.array(mach_contour)
+        self.temperatureFunction = np.array(temperature_profile) 
+        self.pressureFunction = np.array(pressure_profile)
 
         return None
 
@@ -293,23 +293,33 @@ class Nozzle:
             self.coolant_viscosity = PropsSI('viscosity', 'T', T, 'P', P, self.coolantType)
             self.coolant_k = PropsSI('conductivity', 'T', T, 'P', P, self.coolantType)
             self.coolant_Pr = PropsSI('Prandtl', 'T', T, 'P', P, self.coolantType)
+            self.coolant_Cp = PropsSI('Cpmass', 'T', T, 'P', P, self.coolantType)
+
+            self.ethanolBoilingT = PropsSI('T', 'P', P, 'Q', 1, self.coolantType)
 
         elif self.coolantType == 'Ethanol+Water':
             HEOS = CP.AbstractState('HEOS', 'Ethanol&Water')
             HEOS.set_mass_fractions([1 - x, x])
-
             HEOS.update(CP.PT_INPUTS, P, T)
     
             self.coolant_Pr = HEOS.Prandtl()
             self.coolant_k = HEOS.conductivity()
             self.coolant_rho = HEOS.rhomass()
             self.coolant_viscosity = HEOS.viscosity()
+            self.coolant_Cp = HEOS.cpmass()
+
+            HEOS_2 = CP.AbstractState('HEOS', 'Ethanol&Water')
+            HEOS_2.set_mass_fractions([1 - x, x])
+            HEOS_2.update(CP.PQ_INPUTS, P, 1)
+
+            self.ethanolBoilingT = HEOS_2.T()
 
         else: 
             self.coolant_rho = None
             self.coolant_viscosity = None
             self.coolant_k = None
             self.coolant_Pr = None
+            self.coolant_Cp = None
         
         return self.coolant_rho, self.coolant_viscosity, self.coolant_k, self.coolant_Pr
     
@@ -461,7 +471,7 @@ class Nozzle:
 
             h_profile.append(h)
 
-        self.gasH = h_profile
+        self.gasH = np.array(h_profile)
         
         return None
 
@@ -531,10 +541,21 @@ class Nozzle:
 
             wall_temperature_profile.append(Tw1)
 
-        self.wallTemperatureFunction = wall_temperature_profile
-        self.finEfficiencyFunction = fin_efficiency_vector
-        self.finThicknessFunction = fin_thickness_vector
-        
+        self.wallTemperatureFunction = np.arra(wall_temperature_profile)
+        self.finEfficiencyFunction = np.array(fin_efficiency_vector)
+        self.finThicknessFunction = np.array(fin_thickness_vector)
+
+        # Calculating total heat transfer rate and Ethanol delta T
+        y = self.gasH*(np.pi*2*self.yGeometry)*(self.temperatureFunction - self.wallTemperatureFunction)
+        Q_total = np.trapz(y, self.xGeometry)
+
+        deltaT_Ethanol = Q_total/(self.coolant_Cp*self.coolantMassFlow)
+        ethanol_exit_temperature = deltaT_Ethanol + self.coolantInletTemperature
+
+        self.totalQ = Q_total
+        self.ethanolDeltaT = deltaT_Ethanol
+        self.ethanolExitT = ethanol_exit_temperature
+
         return None
 
     def max_wall_temperature(self, n_points):
@@ -836,7 +857,11 @@ class Nozzle:
         print("Coolant conductivity (k): ", self.coolant_k)
         print("Coolant Prandtl number (Pr): ", self.coolant_Pr)
         print("Reynolds number: ", self.coolantReynolds)
-        print("Coolant convective heat transfer coefficient: ", self.coolantH, "W/m²K \n \n")
+        print("Coolant convective heat transfer coefficient: ", self.coolantH, "W/m²K ")
+        print("Total heat transfer rate (Q): ", self.totalQ/1000, "kW ")
+        print("Ethanol delta T: ", self.ethanolDeltaT, "K")
+        print("Ethanol exit temperature: ", self.ethanolExitT, "K")
+        print("Ethanol boiling temperature: ", self.ethanolBoilingT, "K \n \n")
 
         self.geometryPlot()
 
