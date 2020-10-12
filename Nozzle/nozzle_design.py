@@ -562,6 +562,58 @@ class Nozzle:
         
         return None
 
+    def getBartzHotH(self):
+        if len(self.xGeometry) == 0 or len(self.yGeometry) == 0:
+            self.evaluateGeometry()
+
+        yGeometry = self.yGeometry
+
+        if len(self.temperatureFunction) == 0 or len(self.MachFunction) == 0:
+            self.evaluateTemperatureFunction()
+
+        massFlowRate = self.massFlow
+
+        self.getGasProperties()
+
+        rho_vector = self.rho_vector
+        viscosity_vector = self.viscosity_vector
+        Pr_vector = self.Pr_vector
+        k_vector = self.k_vector
+        
+        t_wall_profile = self.wallTemperatureFunction
+        t_profile = self.temperatureFunction
+        M_profile = self.MachFunction
+        
+        T0 = t_profile[0]
+        gamma = self.gamma
+        w = 0.6
+        viscosity = viscosity_vector[0]
+        Pr = Pr_vector[0]
+        k = k_vector[0]
+        Cp = Pr*k/viscosity
+
+        h_profile = []
+        
+        for i in range(len(yGeometry)):
+            rho = rho_vector[i]
+            Tw_i = t_wall_profile[i]
+            M_i = M_profile[i]
+            D_i = 2*yGeometry[i]
+
+            A_i = 0.25*pi*D_i**2
+            flowRate = massFlowRate/rho
+            velocity = flowRate/A_i
+
+            sigma_i = 1/(((0.5*(Tw_i/T0)*(1 + (M_i**2)*(gamma-1)/2) + 0.5)**(0.8-w/5))*((1 + (M_i**2)*(gamma-1)/2)**(w/5)))
+
+            h = (0.026/(D_i**0.2))* ((viscosity**0.2)*Cp/(Pr**0.6)) * ((rho*velocity)**0.8) * sigma_i
+
+            h_profile.append(h)
+
+        self.gasH2 = np.array(h_profile)
+        
+        return None
+
     def fin_efficiency(self, finThickness):
         k = self.wallConductivity
         h = self.coolantH
@@ -803,7 +855,7 @@ class Nozzle:
         plt.show()
 
         return None
-        
+    
     def exportGeometry(self, plot=False):
         n = self.discretization
 
@@ -885,7 +937,7 @@ class Nozzle:
         plt.show()
 
         return None
-            
+    
     def getPlots(self):
         self.evaluateGeometry()
         self.evaluateTemperatureFunction()
@@ -1020,7 +1072,7 @@ class Nozzle:
         self.geometryPlot()
 
         self.getPlots()
-
+    
 def objective_function(parameters):
     inletPressure = parameters[0]
     channelHeight = parameters[1]
