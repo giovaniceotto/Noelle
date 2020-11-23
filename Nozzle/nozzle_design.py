@@ -98,6 +98,8 @@ class Nozzle:
         self.gasH = []
         self.coolantH = None
         self.coolantVariableH = []
+        self.coolantFrictionFactor = None
+        self.coolantVariableFrictionFactor = []
 
         self.finEfficiencyFunction = []
         self.finThicknessFunction = []
@@ -465,9 +467,11 @@ class Nozzle:
         self.coolantReynolds = reynolds
 
         if reynolds >= 10000:
+            f = (0.79*np.log(reynolds) - 1.64)**(-2)
             Nu = 0.023*reynolds**(4/5)*Pr**(0.4)
         elif reynolds <= 2300: 
             Nu = 4.36
+            f = 64/(reynolds)
         elif reynolds < 10000 and reynolds > 3000:
             # Gnielinski correlation
             f = (0.79*np.log(reynolds) - 1.64)**(-2)
@@ -477,9 +481,17 @@ class Nozzle:
             f = (0.79*np.log(3000) - 1.64)**(-2)
             Nu = 4.36 + ((reynolds - 2300)/(3000 - 2300))*((Pr*(f/8)*(3000 - 1000))/(1 + 12.7*((f/8)**(0.5))*(Pr**(2/3) -1)) - 4.36)
 
+            f = 64/2300 + ((reynolds - 2300)/(3000 - 2300))*((0.79*np.log(3000) - 1.64)**(-2) - 64/2300)
+
         h = Nu*k/channelDiameter
 
+        L = self.xGeometry[-1] - self.xGeometry[0]
+        deltaP = 0.5*rho*f*(channelVelocity**2)*(L/channelDiameter)
+
         self.coolantH = h
+        self.coolantFrictionFactor = f
+        self.coolantDeltaP = deltaP
+        self.coolantExitPressure = self.coolantPressure - deltaP
 
         return h
 
@@ -501,8 +513,10 @@ class Nozzle:
         self.coolantReynolds = reynolds
 
         if reynolds >= 10000:
+            f = (0.79*np.log(reynolds) - 1.64)**(-2)
             Nu = 0.023*reynolds**(4/5)*Pr**(0.4)
         elif reynolds <= 2300: 
+            f = 64/(reynolds)
             Nu = 4.36
         elif reynolds < 10000 and reynolds > 3000:
             # Gnielinski correlation
@@ -513,11 +527,14 @@ class Nozzle:
             f = (0.79*np.log(3000) - 1.64)**(-2)
             Nu = 4.36 + ((reynolds - 2300)/(3000 - 2300))*((Pr*(f/8)*(3000 - 1000))/(1 + 12.7*((f/8)**(0.5))*(Pr**(2/3) -1)) - 4.36)
 
+            f = 64/2300 + ((reynolds - 2300)/(3000 - 2300))*((0.79*np.log(3000) - 1.64)**(-2) - 64/2300)
+
         h = Nu*k/channelDiameter
 
+        self.coolantVariableFrictionFactor.append(f)
         self.coolantVariableH.append(h)
 
-        return h, Cp
+        return h, Cp, f, rho, channelVelocity, channelDiameter
     
     def getHotH(self):
         if len(self.xGeometry) == 0 or len(self.yGeometry) == 0:
@@ -650,7 +667,9 @@ class Nozzle:
         t = self.wallThickness
 
         wall_temperature_profile = []
+        wall_min_temperature_profile = []
         channel_temperature_profile = [self.coolantInletTemperature]
+        channel_pressure_profile = [self.coolantPressure]
         fin_efficiency_vector = []
         fin_thickness_vector = []
         channel_h_profile = []
@@ -676,7 +695,7 @@ class Nozzle:
             h1 = hGas[i]
 
             if self.constantCoolantH == False:
-                h2, coolant_Cp = self.getVariableCoolantH(T_inf2)
+                h2, coolant_Cp, ff, rho, channelVelocity, channelDiameter = self.getVariableCoolantH(T_inf2)
             else:
                 h2 = self.coolantH
 
@@ -689,38 +708,52 @@ class Nozzle:
             
                 x = (pi*D_i)/(finEfficiency*numberOfFins*finThickness + numberOfChannels*channelWidth)
                 Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + x*h1/h2)
+                Tw2 = T_inf2 + (T_inf1 - T_inf2)/(1 + t*h2/k + h2/(x*h1))
 
             else:
                 Tw1 = T_inf1 - (T_inf1 - T_inf2)/(1 + t*h1/k + h1/h2)
+                Tw2 = T_inf2 + (T_inf1 - T_inf2)/(1 + t*h2/k + h2/h1)
 
             if i < (len(xGeometry) - 1):
                 if self.constantCoolantH == False:
                     dTdx = h1*(T_inf1 - Tw1)*pi*2*yGeometry[i]/(self.coolantMassFlow*coolant_Cp)
                     dT = dTdx*abs(xGeometry[i] - xGeometry[i+1])
                     channel_temperature_profile.append(dT + T_inf2)
+
+                    dPdx = - 0.5*ff*(rho*channelVelocity**2)/channelDiameter
+                    dP = dPdx*abs(xGeometry[i] - xGeometry[i+1])
+                    channel_pressure_profile.append(dP + channel_pressure_profile[-1])
                 else:
                     channel_temperature_profile.append(T_inf2)
+                    channel_pressure_profile.append(channel_pressure_profile[-1])
 
             wall_temperature_profile.append(Tw1)
+            wall_min_temperature_profile.append(Tw2)
             channel_h_profile.append(h2)
 
         if self.reverseDirection == True:
             wall_temperature_profile = np.flip(np.array(wall_temperature_profile))
+            wall_min_temperature_profile = np.flip(np.array(wall_min_temperature_profile))            
             fin_efficiency_vector = np.flip(np.array(fin_efficiency_vector))
             fin_thickness_vector = np.flip(np.array(fin_thickness_vector))
             channel_temperature_profile = np.flip(np.array(channel_temperature_profile))
+            channel_pressure_profile = np.flip(np.array(channel_pressure_profile))
             channel_h_profile = np.flip(np.array(channel_h_profile))
         else: 
             wall_temperature_profile = np.array(wall_temperature_profile)
+            wall_min_temperature_profile = np.array(wall_min_temperature_profile)            
             fin_efficiency_vector = np.array(fin_efficiency_vector)
             fin_thickness_vector = np.array(fin_thickness_vector)
             channel_temperature_profile = np.array(channel_temperature_profile)
+            channel_pressure_profile = np.array(channel_pressure_profile)
             channel_h_profile = np.array(channel_h_profile)
 
         self.wallTemperatureFunction = wall_temperature_profile
+        self.wallMinTemperatureFunction = wall_min_temperature_profile
         self.finEfficiencyFunction = fin_efficiency_vector
         self.finThicknessFunction = fin_thickness_vector
         self.channelTemperatureFunction = channel_temperature_profile
+        self.channelPressureFunction = channel_pressure_profile
         self.channelHFunction = channel_h_profile
 
         # Calculating total heat transfer rate and Ethanol delta T
@@ -728,7 +761,7 @@ class Nozzle:
         Q_total = simps(y, self.xGeometry)
 
         Tm = (channel_temperature_profile[0] + channel_temperature_profile[-1])/2
-        h2, coolant_Cp = self.getVariableCoolantH(Tm)
+        h2, coolant_Cp, _, _, _, _ = self.getVariableCoolantH(Tm)
         deltaT_Ethanol = Q_total/(self.coolant_Cp*self.coolantMassFlow)
         ethanol_exit_temperature = deltaT_Ethanol + self.coolantInletTemperature
 
@@ -736,6 +769,9 @@ class Nozzle:
         self.ethanolDeltaT = deltaT_Ethanol
         self.ethanolExitT = ethanol_exit_temperature
         self.Qderivative = y
+
+        self.coolantExitPressure = channel_pressure_profile[-1]
+        self.coolantDeltaP = channel_pressure_profile[-1] - channel_pressure_profile[0]
 
         return None
 
@@ -848,10 +884,9 @@ class Nozzle:
         plt.xlabel("x [mm]")
         plt.ylabel("y [mm]")
         plt.title("Bell nozzle contour")
-        plt.xlim(-10, 35)
-        plt.ylim(-5, 20)
+        plt.grid(True)
         plt.gca().set_aspect('equal', adjustable='box')
-        #plt.savefig('nozzleContour.png', dpi=300)
+        plt.savefig('py_nozzle_geometry.png', dpi=300)
         plt.show()
 
         return None
@@ -948,31 +983,31 @@ class Nozzle:
         plt.xlabel("x [mm]")
         plt.ylabel("M(x)")
         plt.grid(True)
-        #plt.savefig('machProfile.png', dpi=300)
+        plt.savefig('py_mach_profile.png', dpi=300)
         plt.show()
 
         plt.figure(dpi=150)
         plt.plot(self.xGeometry*1000, self.temperatureFunction, 'b')
         plt.xlabel("x [mm]")
-        plt.ylabel("T(x) [K]")
+        plt.ylabel(r"$T_{\infty, hg}$(x) [K]")
         plt.grid(True)
-        #plt.savefig('tempProfile.png', dpi=300)
+        plt.savefig('py_temp_profile.png', dpi=300)
         plt.show()
 
         plt.figure(dpi=150)
-        plt.plot(self.xGeometry*1000, self.pressureFunction, 'b')
+        plt.plot(self.xGeometry*1000, self.pressureFunction/1e5, 'b')
         plt.xlabel("x [mm]")
-        plt.ylabel("P(x) [Pa]")
+        plt.ylabel("P(x) [bar]")
         plt.grid(True)
-        #plt.savefig('tempProfile.png', dpi=300)
+        plt.savefig('py_pres_profile.png', dpi=300)
         plt.show()
 
         plt.figure(dpi=150)
         plt.plot(1000*np.array(self.xGeometry), self.gasH, 'b')
         plt.xlabel("x [mm]")
-        plt.ylabel(r"$h_{1}$ [W/m²K]")
+        plt.ylabel(r"$h_{hg}$ [W/m²K]")
         plt.grid(True)
-        #plt.savefig('h1_contour.png', dpi=300)
+        plt.savefig('py_h_hg.png', dpi=300)
         plt.show()
 
         plt.figure(dpi=150)
@@ -980,7 +1015,7 @@ class Nozzle:
         plt.xlabel("x [mm]")
         plt.ylabel(r"$ \epsilon_{fin} $ []")
         plt.grid(True)
-        #plt.savefig('finEfficiency_contour.png', dpi=300)
+        plt.savefig('py_fin_efficiency.png', dpi=300)
         plt.show()
 
         plt.figure(dpi=150)
@@ -988,15 +1023,17 @@ class Nozzle:
         plt.xlabel("x [mm]")
         plt.ylabel(r"$ t_{fin} $ [mm]")
         plt.grid(True)
-        #plt.savefig('finThickness_contour.png', dpi=300)
+        plt.savefig('py_fin_thickness.png', dpi=300)
         plt.show()
 
         plt.figure(dpi=150)
-        plt.plot(1000*np.array(self.xGeometry), self.wallTemperatureFunction, 'b')
+        plt.plot(1000*np.array(self.xGeometry), self.wallTemperatureFunction, 'b', label="Inner Temperature")
+        plt.plot(1000*np.array(self.xGeometry), self.wallMinTemperatureFunction, 'r', label="Outer Temperature")        
         plt.xlabel("x [mm]")
         plt.ylabel(r"$T_{w, max}$ [K]")
         plt.grid(True)
-        #plt.savefig('wall_temp_profile.png', dpi=300)
+        plt.legend()
+        plt.savefig('py_wall_temp_profile.png', dpi=300)
         plt.show()
 
         plt.figure(dpi=150)
@@ -1005,23 +1042,31 @@ class Nozzle:
         plt.ylabel(r"$ \frac{dQ}{dx} $ [kW/m]")
         plt.ylim(0, max(self.Qderivative)/1000)
         plt.grid(True)
-        #plt.savefig('wall_temp_profile.png', dpi=300)
+        plt.savefig('py_Q_derivative.png', dpi=300)
         plt.show()
 
         plt.figure(dpi=150)
         plt.plot(1000*np.array(self.xGeometry), self.channelHFunction, 'b')
         plt.xlabel("x [mm]")
-        plt.ylabel(r"$h_{2}$ [W/m²K]")
+        plt.ylabel(r"$h_{c}$ [W/m²K]")
         plt.grid(True)
-        #plt.savefig('h1_contour.png', dpi=300)
+        plt.savefig('py_h_c.png', dpi=300)
         plt.show()
 
         plt.figure(dpi=150)
         plt.plot(1000*np.array(self.xGeometry), self.channelTemperatureFunction, 'b')
         plt.xlabel("x [mm]")
-        plt.ylabel(r"$T_{\inf, 2}$ [K]")
+        plt.ylabel(r"$T_{\inf, c}$ [K]")
         plt.grid(True)
-        #plt.savefig('wall_temp_profile.png', dpi=300)
+        plt.savefig('py_cool_temp.png', dpi=300)
+        plt.show()
+
+        plt.figure(dpi=150)
+        plt.plot(1000*np.array(self.xGeometry), self.channelPressureFunction/1e5, 'b')
+        plt.xlabel("x [mm]")
+        plt.ylabel(r"$P_{coolant}$ [bar]")
+        plt.grid(True)
+        plt.savefig('py_cool_pres.png', dpi=300)
         plt.show()
 
         return None
