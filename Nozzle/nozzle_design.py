@@ -64,6 +64,10 @@ class Nozzle:
         self.thetaN = 19 # deg
         self.thetaE = 9 # deg
 
+        # Combustion Chamber dimensions
+        self.chamberDiameter = 0.05
+        self.chamberLength = 0.05
+
         # Initializing other attributes that will be used further
         self.throatArea = None
         self.throatDiameter = None
@@ -229,8 +233,11 @@ class Nozzle:
         x_vector2, y_vector2 = circle2(throatDiameter/2, thetaN)
         x_vector3, y_vector3 = parabola(throatDiameter/2, exitDiameter/2, length, thetaN, thetaE)
 
-        x_bell_contour = x_vector1 + x_vector2[1:] + x_vector3[1:]
-        y_bell_contour = y_vector1 + y_vector2[1:] + y_vector3[1:]
+        x_vector0 = [x_vector1[0] - self.chamberLength, x_vector1[0]]
+        y_vector0 = [y_vector1[0], y_vector1[0]]
+
+        x_bell_contour = x_vector0 + x_vector1[1:] + x_vector2[1:] + x_vector3[1:]
+        y_bell_contour = y_vector0 + y_vector1[1:] + y_vector2[1:] + y_vector3[1:]
 
         x_bell_contour = np.array(x_bell_contour)
         y_bell_contour = np.array(y_bell_contour)
@@ -855,8 +862,11 @@ class Nozzle:
         i1 = round(0.2*n)
         i2 = i1 + round(0.1*n)
 
-        x_vector1 = x_vector[0: i1]
-        y_vector1 = y_vector[0: i1]
+        x_vector0 = x_vector[0: 2]
+        y_vector0 = y_vector[0: 2]
+
+        x_vector1 = x_vector[1: i1]
+        y_vector1 = y_vector[1: i1]
 
         x_vector2 = x_vector[(i1-1): i2]
         y_vector2 = y_vector[(i1-1): i2]
@@ -875,6 +885,7 @@ class Nozzle:
 
         # Contour 
         plt.figure(1, dpi=150)
+        plt.plot(x_vector0*1000, y_vector0*1000, 'k')
         plt.plot(x_vector1*1000, y_vector1*1000, 'b')
         plt.plot(x_vector2*1000, y_vector2*1000, 'r')
         plt.plot(x_vector3*1000, y_vector3*1000, 'g')
@@ -1027,10 +1038,10 @@ class Nozzle:
         plt.show()
 
         plt.figure(dpi=150)
-        plt.plot(1000*np.array(self.xGeometry), self.wallTemperatureFunction, 'b', label="Inner Temperature")
-        plt.plot(1000*np.array(self.xGeometry), self.wallMinTemperatureFunction, 'r', label="Outer Temperature")        
+        plt.plot(1000*np.array(self.xGeometry), self.wallTemperatureFunction, 'r', label="Inner Temperature")
+        plt.plot(1000*np.array(self.xGeometry), self.wallMinTemperatureFunction, 'b', label="Outer Temperature")        
         plt.xlabel("x [mm]")
-        plt.ylabel(r"$T_{w, max}$ [K]")
+        plt.ylabel(r"$T_{w}$ [K]")
         plt.grid(True)
         plt.legend()
         plt.savefig('py_wall_temp_profile.png', dpi=300)
