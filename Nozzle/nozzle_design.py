@@ -14,7 +14,7 @@ from scipy.optimize import fsolve
 from scipy.integrate import simps
 from pyswarm import pso
 
-#from noelle import *
+from noelle import *
 
 # Defining mathematical parameters and operations
 sqrt = math.sqrt
@@ -889,7 +889,7 @@ class Nozzle:
             index_i = find_nearest(self.xGeometry, x_i)
             index_f = find_nearest(self.xGeometry, x_f) + 1
 
-            y = self.gasH*(np.pi*2*self.yGeometry)*(self.temperatureFunction - self.wallTemperatureFunction)
+            y = self.gasH*(np.pi*2*self.yGeometry)*(self.temperatureFunction - T_sat)
             Q_total = simps(y[index_i: index_f], self.xGeometry[index_i: index_f])
 
             Q_total = Q_total*(L)/(self.xGeometry[index_f-1] - self.xGeometry[index_i])
