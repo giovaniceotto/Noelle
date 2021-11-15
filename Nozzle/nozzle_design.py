@@ -9,11 +9,12 @@ import math
 import matplotlib.pyplot as plt
 import CoolProp.CoolProp as CP
 from CoolProp.CoolProp import PropsSI
+from numpy.lib.function_base import _quantile_is_valid
 from scipy.optimize import fsolve
 from scipy.integrate import simps
 from pyswarm import pso
 
-from noelle import *
+#from noelle import *
 
 # Defining mathematical parameters and operations
 sqrt = math.sqrt
@@ -852,6 +853,51 @@ class Nozzle:
             wall_temperature_profile.append(Tw1)
             
         return(max(wall_temperature_profile))
+
+    def filmCoolingLength(self, x_inj, ml):
+
+        def stab_effectiveness(reynolds):
+            effect = 0.5 + (4000 - reynolds)*0.5/4000
+
+            return effect
+
+        def find_nearest(a, a0):
+            "Element in nd array `a` closest to the scalar value `a0`"
+            idx = np.abs(a - a0).argmin()
+            return idx
+
+        D = 2*self.yGeometry[find_nearest(self.xGeometry, x_inj)]
+
+        T = self.coolantInletTemperature
+        P = self.coolantPressure
+
+        viscosity = PropsSI('viscosity', 'T', T, 'P', P, 'Ethanol')
+        Re = ml/(np.pi*D*viscosity)
+        Cp = PropsSI('Cpmass', 'T', T, 'P', P, 'Ethanol')
+        T_sat = PropsSI('T', 'P', P, 'Q', 0.5, 'Ethanol')
+        T_inj = self.coolantInletTemperature
+
+        eta = stab_effectiveness(Re)
+
+        Hv = PropsSI('H', 'P', P, 'Q', 1, 'Ethanol') - PropsSI('H', 'P', P, 'Q', 0, 'Ethanol')
+        Q = eta*(ml*Cp*(T_sat-T_inj)) + eta*(ml*Hv)
+
+        def funct(L):
+            x_i = x_inj
+            x_f = L - x_inj
+
+            index_i = find_nearest(self.xGeometry, x_i)
+            index_f = find_nearest(self.xGeometry, x_f) + 1
+
+            y = self.gasH*(np.pi*2*self.yGeometry)*(self.temperatureFunction - self.wallTemperatureFunction)
+            Q_total = simps(y[index_i: index_f], self.xGeometry[index_i: index_f])
+
+            Q_total = Q_total*(L)/(self.xGeometry[index_f-1] - self.xGeometry[index_i])
+            return Q_total - Q
+
+        L = fsolve(funct, self.xGeometry[-1]/2)[0]
+
+        return L
 
     def geometryPlot(self):
         self.evaluateGeometry()
